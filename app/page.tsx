@@ -37,6 +37,22 @@ export default function Home() {
           >
             SoundCloud
           </button>
+          <button
+            onClick={() => {
+              setSelectedService("soundcloud");
+              setStep("login");
+            }}
+          >
+            Youtube Music
+          </button>
+          <button
+            onClick={() => {
+              setSelectedService("soundcloud");
+              setStep("login");
+            }}
+          >
+            Amazon Music
+          </button>
         </div>
       )}
 
