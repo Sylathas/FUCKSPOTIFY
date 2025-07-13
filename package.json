@@ -1,5 +1,5 @@
 {
-  "name": "nextjs",
+  "name": "fuckspotify",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -29,5 +29,23 @@
       "@types/react": "19.0.10",
       "@types/react-dom": "19.0.4"
     }
-  }
+  },
+  "description": "music transfer web app",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sylathas/FUCKSPOTIFY.git"
+  },
+  "keywords": [
+    "music",
+    "transfer",
+    "fuck",
+    "spotify"
+  ],
+  "author": "sylathas",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Sylathas/FUCKSPOTIFY/issues"
+  },
+  "homepage": "https://github.com/Sylathas/FUCKSPOTIFY#readme"
 }

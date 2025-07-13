@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
@@ -21,6 +21,18 @@ export async function GET(req: NextRequest) {
   });
   const tokenData = await tokenRes.json();
 
-  // Here normally you'd save to a cookie/session, for now just return JSON
-  return NextResponse.json(tokenData);
+  // Instead of returning JSON, return an HTML page that saves to localStorage
+  return new Response(
+    `
+      <html>
+        <body>
+          <script>
+            localStorage.setItem('spotify_token', '${tokenData.access_token}');
+            window.location.href = "/";
+          </script>
+        </body>
+      </html>
+    `,
+    { headers: { "Content-Type": "text/html" } }
+  );
 }
