@@ -3,9 +3,11 @@
 import Image from "next/image";
 import { motion } from "framer-motion";     // already in Next.js runtime
 
-const floatAnim = {
-    y: [0, -20, 0],
-    transition: { duration: 2.5, repeat: Infinity, ease: "easeInOut" },
+const floatY = { y: [0, -20, 0] };
+const floatTransition = {
+    duration: 2.5,
+    repeat: Infinity,
+    ease: "easeInOut",
 };
 
 export default function Header() {
@@ -19,7 +21,8 @@ export default function Header() {
             {/* Left hand */}
             <motion.div
                 className="absolute left-4 top-1/2 -translate-y-1/2"
-                animate={floatAnim}
+                animate={floatY}
+                transition={floatTransition}
             >
                 <Image
                     src="/hand.png" // replace with your asset
@@ -32,7 +35,8 @@ export default function Header() {
             {/* Right hand */}
             <motion.div
                 className="absolute right-4 top-1/2 -translate-y-1/2 rotate-180"
-                animate={floatAnim}
+                animate={floatY}
+                transition={floatTransition}
             >
                 <Image
                     src="/hand.png" // mirror or separate asset

@@ -9,7 +9,6 @@ export function getSpotifySdk(opts: {
         access_token: opts.accessToken,
         refresh_token: opts.refreshToken,
         token_type: "Bearer",
-        scope: "", // not validated
         expires_in: Math.max(0, Math.floor((opts.expiresAt - Date.now()) / 1000)),
     });
 }

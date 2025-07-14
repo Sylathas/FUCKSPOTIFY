@@ -1,4 +1,4 @@
-import Header from "@/components/Header";
+import Header from "./components/Header";
 import Stage1Login from "./stages/Stage1Login";
 import Stage2Library from "./stages/Stage2Library.server";
 import Stage3Platform from "./stages/Stage3Platform";
