@@ -7,6 +7,7 @@ declare module 'next-auth' {
         user: {
             accessToken?: string;
             refreshToken?: string;
+            accessTokenExpires?: number;
             username?: string;
         } & DefaultSession['user']; // Merge with default properties
     }
