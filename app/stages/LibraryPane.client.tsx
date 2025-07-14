@@ -3,10 +3,16 @@
 import Image from "next/image";
 import { useState } from "react";
 
+import type {
+    SavedTrack,
+    SavedAlbum,
+    SimplifiedPlaylist,
+} from "@spotify/web-api-ts-sdk";
+
 type Props = {
-    tracks: SpotifyApi.SavedTrackObject[];
-    albums: SpotifyApi.SavedAlbumObject[];
-    playlists: SpotifyApi.PlaylistObjectSimplified[];
+    tracks: SavedTrack[];
+    albums: SavedAlbum[];
+    playlists: SimplifiedPlaylist[];
 };
 
 export default function LibraryPane({ tracks, albums, playlists }: Props) {

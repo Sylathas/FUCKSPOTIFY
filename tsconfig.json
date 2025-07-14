@@ -19,7 +19,6 @@
     "incremental": true,
     "types": [
       "next-auth",
-      "spotify-api"
     ],
     "plugins": [
       {
