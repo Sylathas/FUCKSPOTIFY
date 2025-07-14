@@ -1,14 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { motion } from "framer-motion";     // already in Next.js runtime
+import { motion, type Transition } from "framer-motion";
 
 const floatY = { y: [0, -20, 0] };
-const floatTransition = {
+const floatTransition: Transition = {
     duration: 2.5,
     repeat: Infinity,
-    ease: "easeInOut",
-};
+    ease: [0.42, 0, 0.58, 1],
+}
 
 export default function Header() {
     return (
