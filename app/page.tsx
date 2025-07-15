@@ -3,6 +3,11 @@ import StageLogin from "./stages/StageLogin";
 import StageSongs from "./stages/StageSongs.client";
 import StageAlbums from "./stages/StageAlbums.client";
 import StagePlaylists from "./stages/StagePlaylists.client";
+import type {
+  SavedTrack,
+  SavedAlbum,
+  SimplifiedPlaylist,
+} from "@spotify/web-api-ts-sdk";
 import StageService from "./stages/StageService";
 import StageTransfer from "./stages/StageTransfer";
 import { getServerSession } from "next-auth";
@@ -14,9 +19,9 @@ export default async function Home() {
   const session = await getServerSession(authOptions);
 
   /* ②  fetch library once (if logged in) */
-  let tracks: any[] = [];
-  let albums: any[] = [];
-  let playlists: any[] = [];
+  let tracks: SavedTrack[] = [];
+  let albums: SavedAlbum[] = [];
+  let playlists: SimplifiedPlaylist[] = [];
 
   if (session?.user?.accessToken) {
     const sdk = getSpotifySdk({
