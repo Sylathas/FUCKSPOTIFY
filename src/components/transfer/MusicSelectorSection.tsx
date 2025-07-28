@@ -256,7 +256,10 @@ export default function MusicSelectorSection({
                     <div
                         ref={tracksScrollRef}
                         onScroll={handleTracksScroll}
-                        className="flex-1 mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto"
+                        className={`
+              mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
+              ${isMobile ? 'h-32' : 'h-48'}
+            `}
                         style={{
                             borderStyle: 'inset',
                             boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.5)'
@@ -328,7 +331,10 @@ export default function MusicSelectorSection({
                     <div
                         ref={albumsScrollRef}
                         onScroll={handleAlbumsScroll}
-                        className="flex-1 mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto"
+                        className={`
+              mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
+              ${isMobile ? 'h-32' : 'h-48'}
+            `}
                         style={{
                             borderStyle: 'inset',
                             boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.5)'
@@ -400,7 +406,10 @@ export default function MusicSelectorSection({
                     <div
                         ref={playlistsScrollRef}
                         onScroll={handlePlaylistsScroll}
-                        className="flex-1 mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto"
+                        className={`
+              mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
+              ${isMobile ? 'h-32' : 'h-48'}
+            `}
                         style={{
                             borderStyle: 'inset',
                             boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.5)'
