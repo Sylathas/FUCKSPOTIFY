@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { spotifyAuth } from '@/lib/spotify'
 
-export default function SpotifyCallback() {
+function CallbackContent() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const [status, setStatus] = useState('Processing login...')
@@ -57,5 +57,20 @@ export default function SpotifyCallback() {
                 </div>
             </div>
         </div>
+    )
+}
+
+export default function SpotifyCallback() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-black flex items-center justify-center">
+                <div className="text-center">
+                    <div className="text-green-400 text-xl mb-4">Loading...</div>
+                    <div className="w-8 h-8 border-2 border-green-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                </div>
+            </div>
+        }>
+            <CallbackContent />
+        </Suspense>
     )
 }
