@@ -4,10 +4,9 @@ import { SpotifyTrack, SpotifyAlbum, SpotifyPlaylist } from '@/types'
 // Spotify OAuth configuration
 const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID!
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!
-// Use the current domain for redirect URI
-const REDIRECT_URI = typeof window !== 'undefined'
-    ? `${window.location.origin}/callback`
-    : process.env.NEXT_PUBLIC_REDIRECT_URI || 'http://localhost:3000/callback'
+// Use environment variable or construct from current domain
+const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI ||
+    (typeof window !== 'undefined' ? `${window.location.origin}/callback` : 'http://localhost:3000/callback')
 
 // Scopes we need for the app
 const SCOPES = [
@@ -66,23 +65,39 @@ export class SpotifyAuth {
 
     // Step 1: Redirect to Spotify login
     async redirectToSpotifyLogin(): Promise<void> {
-        const state = generateRandomString(16)
-        setState(state)
+        try {
+            console.log('Starting Spotify login process...')
+            console.log('CLIENT_ID:', CLIENT_ID)
+            console.log('REDIRECT_URI:', REDIRECT_URI)
 
-        const codeVerifier = await generateCodeVerifier()
-        const codeChallenge = await generateCodeChallenge(codeVerifier)
+            if (!CLIENT_ID) {
+                throw new Error('Spotify Client ID is not configured')
+            }
 
-        const params = new URLSearchParams({
-            response_type: 'code',
-            client_id: CLIENT_ID,
-            scope: SCOPES,
-            redirect_uri: REDIRECT_URI,
-            state: state,
-            code_challenge_method: 'S256',
-            code_challenge: codeChallenge,
-        })
+            const state = generateRandomString(16)
+            setState(state)
 
-        window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`
+            const codeVerifier = await generateCodeVerifier()
+            const codeChallenge = await generateCodeChallenge(codeVerifier)
+
+            const params = new URLSearchParams({
+                response_type: 'code',
+                client_id: CLIENT_ID,
+                scope: SCOPES,
+                redirect_uri: REDIRECT_URI,
+                state: state,
+                code_challenge_method: 'S256',
+                code_challenge: codeChallenge,
+            })
+
+            const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`
+            console.log('Redirecting to:', authUrl)
+
+            window.location.href = authUrl
+        } catch (error) {
+            console.error('Error in redirectToSpotifyLogin:', error)
+            throw error
+        }
     }
 
     // Step 2: Handle callback and exchange code for token

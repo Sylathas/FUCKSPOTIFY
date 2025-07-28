@@ -1,3 +1,6 @@
+import { useEffect } from 'react'
+import { spotifyAuth } from '@/lib/spotify'
+
 interface SpotifyLoginSectionProps {
     isMobile: boolean
     onLogin: (user: any) => void
@@ -10,15 +13,52 @@ export default function SpotifyLoginSection({
     spotifyUser
 }: SpotifyLoginSectionProps) {
 
-    const handleLogin = async () => {
-        // TODO: Implement Spotify OAuth
-        // For now, just simulate login
-        const mockUser = {
-            id: 'user123',
-            name: 'Test User',
-            email: 'test@example.com'
+    // Check for existing authentication when component loads
+    useEffect(() => {
+        const initializeAuth = async () => {
+            try {
+                console.log('Initializing Spotify auth...')
+
+                // First check localStorage for user from callback
+                const storedUser = localStorage.getItem('spotify_user')
+                if (storedUser && !spotifyUser) {
+                    console.log('Found stored user:', JSON.parse(storedUser))
+                    onLogin(JSON.parse(storedUser))
+                    return
+                }
+
+                // Then check if we have valid tokens
+                const existingUser = await spotifyAuth.checkExistingLogin()
+                if (existingUser && !spotifyUser) {
+                    console.log('Found existing valid session:', existingUser)
+                    onLogin(existingUser)
+                }
+            } catch (error) {
+                console.error('Auth initialization error:', error)
+            }
         }
-        onLogin(mockUser)
+
+        initializeAuth()
+    }, [onLogin, spotifyUser])
+
+    const handleLogin = async () => {
+        try {
+            console.log('Starting Spotify login...')
+            console.log('Client ID:', process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID)
+            console.log('Redirect URI:', process.env.NEXT_PUBLIC_REDIRECT_URI)
+
+            await spotifyAuth.redirectToSpotifyLogin()
+        } catch (error) {
+            console.error('Login failed:', error)
+            alert(`Login failed: ${error}`)
+        }
+    }
+
+    const handleLogout = () => {
+        console.log('Logging out...')
+        spotifyAuth.logout()
+        localStorage.removeItem('spotify_user')
+        onLogin(null)
     }
 
     return (
