@@ -47,6 +47,14 @@ export default function MusicSelectorSection({
         setError(null)
 
         try {
+            // Double-check authentication before making API calls
+            const existingUser = await spotifyAuth.checkExistingLogin()
+            if (!existingUser) {
+                setError('Please log in to Spotify first')
+                setLoading(false)
+                return
+            }
+
             // Load all data in parallel
             const [userTracks, userAlbums, userPlaylists] = await Promise.all([
                 spotifyAuth.getUserTracks(),
@@ -59,7 +67,16 @@ export default function MusicSelectorSection({
             setPlaylists(userPlaylists)
         } catch (error) {
             console.error('Error loading Spotify data:', error)
-            setError('Failed to load your Spotify library')
+            if (error instanceof Error && error.message.includes('Not authenticated')) {
+                setError('Authentication expired. Please log in again.')
+                // Clear stored user data
+                localStorage.removeItem('spotify_user')
+                localStorage.removeItem('spotify_access_token')
+                localStorage.removeItem('spotify_refresh_token')
+                localStorage.removeItem('spotify_token_expires')
+            } else {
+                setError('Failed to load your Spotify library')
+            }
         } finally {
             setLoading(false)
         }

@@ -1,9 +1,13 @@
 import { SpotifyApi } from '@spotify/web-api-ts-sdk'
+import { SpotifyTrack, SpotifyAlbum, SpotifyPlaylist } from '@/types'
 
 // Spotify OAuth configuration
 const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID!
 const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!
-const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI || 'http://localhost:3000/callback'
+// Use the current domain for redirect URI
+const REDIRECT_URI = typeof window !== 'undefined'
+    ? `${window.location.origin}/callback`
+    : process.env.NEXT_PUBLIC_REDIRECT_URI || 'http://localhost:3000/callback'
 
 // Scopes we need for the app
 const SCOPES = [
@@ -82,7 +86,13 @@ export class SpotifyAuth {
     }
 
     // Step 2: Handle callback and exchange code for token
-    async handleCallback(code: string, state: string): Promise<any> {
+    async handleCallback(code: string, state: string): Promise<{
+        id: string;
+        name: string;
+        email: string;
+        image?: string;
+        followers?: number;
+    }> {
         // Verify state matches
         const storedState = getState()
         if (state !== storedState) {
@@ -143,7 +153,13 @@ export class SpotifyAuth {
     }
 
     // Check if user is already logged in
-    async checkExistingLogin(): Promise<any | null> {
+    async checkExistingLogin(): Promise<{
+        id: string;
+        name: string;
+        email: string;
+        image?: string;
+        followers?: number;
+    } | null> {
         const accessToken = localStorage.getItem('spotify_access_token')
         const expiresAt = localStorage.getItem('spotify_token_expires')
 
@@ -218,7 +234,7 @@ export class SpotifyAuth {
     }
 
     // Get user's playlists with full details
-    async getUserPlaylists(): Promise<any[]> {
+    async getUserPlaylists(): Promise<SpotifyPlaylist[]> {
         if (!this.api) {
             throw new Error('Not authenticated')
         }
@@ -248,15 +264,15 @@ export class SpotifyAuth {
                         return {
                             id: fullPlaylist.id,
                             name: fullPlaylist.name,
-                            description: fullPlaylist.description,
+                            description: fullPlaylist.description || null,
                             images: fullPlaylist.images, // Array of cover images in different sizes
-                            coverImage: fullPlaylist.images?.[0]?.url, // Highest resolution cover
+                            coverImage: fullPlaylist.images?.[0]?.url || undefined, // Highest resolution cover
                             trackCount: fullPlaylist.tracks.total,
                             isPublic: fullPlaylist.public,
                             collaborative: fullPlaylist.collaborative,
                             owner: {
                                 id: fullPlaylist.owner.id,
-                                name: fullPlaylist.owner.display_name
+                                name: fullPlaylist.owner.display_name || null
                             },
                             spotifyUrl: fullPlaylist.external_urls.spotify,
                             // We'll get tracks separately to avoid huge payloads
@@ -268,7 +284,7 @@ export class SpotifyAuth {
                 })
             )
 
-            return detailedPlaylists.filter(Boolean) // Remove any null entries
+            return detailedPlaylists.filter(playlist => playlist !== null) as SpotifyPlaylist[]
         } catch (error) {
             console.error('Error fetching playlists:', error)
             throw error
@@ -276,7 +292,7 @@ export class SpotifyAuth {
     }
 
     // Get all tracks from a specific playlist
-    async getPlaylistTracks(playlistId: string): Promise<any[]> {
+    async getPlaylistTracks(playlistId: string): Promise<SpotifyTrack[]> {
         if (!this.api) {
             throw new Error('Not authenticated')
         }
@@ -314,9 +330,9 @@ export class SpotifyAuth {
                         duration: item.track.duration_ms,
                         explicit: item.track.explicit,
                         popularity: item.track.popularity,
-                        previewUrl: item.track.preview_url,
+                        previewUrl: item.track.preview_url || null,
                         spotifyUrl: item.track.external_urls.spotify,
-                        isrc: item.track.external_ids?.isrc, // International Standard Recording Code
+                        isrc: item.track.external_ids?.isrc || null, // International Standard Recording Code
                         addedAt: item.added_at,
                         addedBy: item.added_by
                     }))
@@ -337,7 +353,7 @@ export class SpotifyAuth {
     }
 
     // Get user's saved albums
-    async getUserAlbums(): Promise<any[]> {
+    async getUserAlbums(): Promise<SpotifyAlbum[]> {
         if (!this.api) {
             throw new Error('Not authenticated')
         }
@@ -382,7 +398,7 @@ export class SpotifyAuth {
     }
 
     // Get user's saved tracks (liked songs)
-    async getUserTracks(): Promise<any[]> {
+    async getUserTracks(): Promise<SpotifyTrack[]> {
         if (!this.api) {
             throw new Error('Not authenticated')
         }
@@ -411,9 +427,9 @@ export class SpotifyAuth {
                     duration: item.track.duration_ms,
                     explicit: item.track.explicit,
                     popularity: item.track.popularity,
-                    previewUrl: item.track.preview_url,
+                    previewUrl: item.track.preview_url || null,
                     spotifyUrl: item.track.external_urls.spotify,
-                    isrc: item.track.external_ids?.isrc,
+                    isrc: item.track.external_ids?.isrc || null,
                     addedAt: item.added_at
                 }))
 
