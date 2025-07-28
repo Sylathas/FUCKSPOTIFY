@@ -248,8 +248,8 @@ export class SpotifyAuth {
         }
     }
 
-    // Get user's playlists with full details
-    async getUserPlaylists(): Promise<SpotifyPlaylist[]> {
+    // Get user's playlists with full details (paginated)
+    async getUserPlaylists(offset = 0, limit = 50): Promise<SpotifyPlaylist[]> {
         if (!this.api) {
             throw new Error('Not authenticated')
         }
@@ -367,96 +367,70 @@ export class SpotifyAuth {
         }
     }
 
-    // Get user's saved albums
-    async getUserAlbums(): Promise<SpotifyAlbum[]> {
+    // Get user's saved albums (paginated)
+    async getUserAlbums(offset = 0, limit = 50): Promise<SpotifyAlbum[]> {
         if (!this.api) {
             throw new Error('Not authenticated')
         }
 
         try {
-            const albums = []
-            let offset = 0
-            const limit = 50
+            const response = await this.api.currentUser.albums.savedAlbums(50, offset, 'US')
 
-            while (true) {
-                const response = await this.api.currentUser.albums.savedAlbums(limit, offset)
+            const albumItems = response.items.map(item => ({
+                id: item.album.id,
+                name: item.album.name,
+                artists: item.album.artists.map(artist => ({
+                    id: artist.id,
+                    name: artist.name
+                })),
+                images: item.album.images,
+                coverImage: item.album.images?.[0]?.url,
+                trackCount: item.album.total_tracks,
+                releaseDate: item.album.release_date,
+                genres: item.album.genres,
+                spotifyUrl: item.album.external_urls.spotify,
+                addedAt: item.added_at
+            }))
 
-                const albumItems = response.items.map(item => ({
-                    id: item.album.id,
-                    name: item.album.name,
-                    artists: item.album.artists.map(artist => ({
-                        id: artist.id,
-                        name: artist.name
-                    })),
-                    images: item.album.images,
-                    coverImage: item.album.images?.[0]?.url,
-                    trackCount: item.album.total_tracks,
-                    releaseDate: item.album.release_date,
-                    genres: item.album.genres,
-                    spotifyUrl: item.album.external_urls.spotify,
-                    addedAt: item.added_at
-                }))
-
-                albums.push(...albumItems)
-
-                if (response.items.length < limit) {
-                    break
-                }
-                offset += limit
-            }
-
-            return albums
+            return albumItems
         } catch (error) {
             console.error('Error fetching albums:', error)
             throw error
         }
     }
 
-    // Get user's saved tracks (liked songs)
-    async getUserTracks(): Promise<SpotifyTrack[]> {
+    // Get user's saved tracks (liked songs) (paginated)
+    async getUserTracks(offset = 0, limit = 50): Promise<SpotifyTrack[]> {
         if (!this.api) {
             throw new Error('Not authenticated')
         }
 
         try {
-            const tracks = []
-            let offset = 0
-            const limit = 50
+            const response = await this.api.currentUser.tracks.savedTracks(50, offset, 'US')
 
-            while (true) {
-                const response = await this.api.currentUser.tracks.savedTracks(limit, offset)
+            const trackItems = response.items.map(item => ({
+                id: item.track.id,
+                name: item.track.name,
+                artists: item.track.artists.map(artist => ({
+                    id: artist.id,
+                    name: artist.name
+                })),
+                album: {
+                    id: item.track.album.id,
+                    name: item.track.album.name,
+                    images: item.track.album.images,
+                    coverImage: item.track.album.images?.[0]?.url
+                },
+                duration: item.track.duration_ms,
+                explicit: item.track.explicit,
+                popularity: item.track.popularity,
+                previewUrl: item.track.preview_url || null,
+                spotifyUrl: item.track.external_urls.spotify,
+                isrc: item.track.external_ids?.isrc || null,
+                addedAt: item.added_at
+            }))
 
-                const trackItems = response.items.map(item => ({
-                    id: item.track.id,
-                    name: item.track.name,
-                    artists: item.track.artists.map(artist => ({
-                        id: artist.id,
-                        name: artist.name
-                    })),
-                    album: {
-                        id: item.track.album.id,
-                        name: item.track.album.name,
-                        images: item.track.album.images,
-                        coverImage: item.track.album.images?.[0]?.url
-                    },
-                    duration: item.track.duration_ms,
-                    explicit: item.track.explicit,
-                    popularity: item.track.popularity,
-                    previewUrl: item.track.preview_url || null,
-                    spotifyUrl: item.track.external_urls.spotify,
-                    isrc: item.track.external_ids?.isrc || null,
-                    addedAt: item.added_at
-                }))
-
-                tracks.push(...trackItems)
-
-                if (response.items.length < limit) {
-                    break
-                }
-                offset += limit
-            }
-
-            return tracks
+            return trackItems
         } catch (error) {
             console.error('Error fetching tracks:', error)
             throw error
