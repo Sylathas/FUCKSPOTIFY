@@ -190,17 +190,38 @@ export default function MusicSelectorSection({
         }
     }, [loadingPlaylists, hasMorePlaylists])
 
-    // Selection handlers
+    // Selection handlers - now with toggle functionality
     const handleSelectAllSongs = () => {
-        onSelectSongs(tracks.map(track => track.id))
+        // If all currently loaded tracks are selected, deselect all. Otherwise, select all.
+        const allTracksSelected = tracks.length > 0 && tracks.every(track => selectedSongs.includes(track.id))
+
+        if (allTracksSelected) {
+            // Deselect all tracks
+            onSelectSongs([])
+        } else {
+            // Select all currently loaded tracks
+            onSelectSongs(tracks.map(track => track.id))
+        }
     }
 
     const handleSelectAllAlbums = () => {
-        onSelectAlbums(albums.map(album => album.id))
+        const allAlbumsSelected = albums.length > 0 && albums.every(album => selectedAlbums.includes(album.id))
+
+        if (allAlbumsSelected) {
+            onSelectAlbums([])
+        } else {
+            onSelectAlbums(albums.map(album => album.id))
+        }
     }
 
     const handleSelectAllPlaylists = () => {
-        onSelectPlaylists(playlists.map(playlist => playlist.id))
+        const allPlaylistsSelected = playlists.length > 0 && playlists.every(playlist => selectedPlaylists.includes(playlist.id))
+
+        if (allPlaylistsSelected) {
+            onSelectPlaylists([])
+        } else {
+            onSelectPlaylists(playlists.map(playlist => playlist.id))
+        }
     }
 
     const handleTrackClick = (trackId: string) => {
@@ -258,7 +279,7 @@ export default function MusicSelectorSection({
                         onScroll={handleTracksScroll}
                         className={`
               mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
-              ${isMobile ? 'h-32' : 'h-48'}
+              ${isMobile ? 'h-32' : 'h-[75%]'}
             `}
                         style={{
                             borderStyle: 'inset',
@@ -300,9 +321,10 @@ export default function MusicSelectorSection({
                     <div className="pb-5 px-2 h-[60px]">
                         <img
                             src="/Buttons/All.png"
-                            alt="All Songs"
+                            alt={tracks.length > 0 && tracks.every(track => selectedSongs.includes(track.id)) ? "Deselect All Songs" : "Select All Songs"}
                             onClick={handleSelectAllSongs}
                             className="w-full h-[80%] cursor-pointer hover:opacity-80"
+                            title={tracks.length > 0 && tracks.every(track => selectedSongs.includes(track.id)) ? "Deselect All Songs" : "Select All Songs"}
                         />
                     </div>
                 </div>
@@ -333,7 +355,7 @@ export default function MusicSelectorSection({
                         onScroll={handleAlbumsScroll}
                         className={`
               mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
-              ${isMobile ? 'h-32' : 'h-48'}
+              ${isMobile ? 'h-32' : 'h-[75%]'}
             `}
                         style={{
                             borderStyle: 'inset',
@@ -375,9 +397,10 @@ export default function MusicSelectorSection({
                     <div className="pb-5 px-2 h-[60px]">
                         <img
                             src="/Buttons/All.png"
-                            alt="All Albums"
+                            alt={albums.length > 0 && albums.every(album => selectedAlbums.includes(album.id)) ? "Deselect All Albums" : "Select All Albums"}
                             onClick={handleSelectAllAlbums}
                             className="w-full h-[80%] cursor-pointer hover:opacity-80"
+                            title={albums.length > 0 && albums.every(album => selectedAlbums.includes(album.id)) ? "Deselect All Albums" : "Select All Albums"}
                         />
                     </div>
                 </div>
@@ -408,7 +431,7 @@ export default function MusicSelectorSection({
                         onScroll={handlePlaylistsScroll}
                         className={`
               mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
-              ${isMobile ? 'h-32' : 'h-48'}
+              ${isMobile ? 'h-32' : 'h-[75%]'}
             `}
                         style={{
                             borderStyle: 'inset',
@@ -450,9 +473,10 @@ export default function MusicSelectorSection({
                     <div className="pb-5 px-2 h-[60px]">
                         <img
                             src="/Buttons/All.png"
-                            alt="All Playlists"
+                            alt={playlists.length > 0 && playlists.every(playlist => selectedPlaylists.includes(playlist.id)) ? "Deselect All Playlists" : "Select All Playlists"}
                             onClick={handleSelectAllPlaylists}
                             className="w-full h-[80%] cursor-pointer hover:opacity-80"
+                            title={playlists.length > 0 && playlists.every(playlist => selectedPlaylists.includes(playlist.id)) ? "Deselect All Playlists" : "Select All Playlists"}
                         />
                     </div>
                 </div>
