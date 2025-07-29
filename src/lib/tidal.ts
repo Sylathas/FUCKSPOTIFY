@@ -180,7 +180,17 @@ export class TidalIntegration {
 
     async searchTrack(track: SpotifyTrack): Promise<string | null> {
         const query = `${track.name} ${track.artists.map(a => a.name).join(' ')}`;
-        const params = new URLSearchParams({ q: query, type: 'TRACK', 'artist-id-filter': 'include' });
+        const params = new URLSearchParams({ q: query, type: 'TRACK' });
+        const response = await this.fetchWithAuth(`${this.apiBase}/v2/search?${params.toString()}`);
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.data?.[0]?.id || null;
+    }
+
+    // NEW: The missing searchAlbum method
+    async searchAlbum(album: SpotifyAlbum): Promise<string | null> {
+        const query = `${album.name} ${album.artists.map(a => a.name).join(' ')}`;
+        const params = new URLSearchParams({ q: query, type: 'ALBUM' });
         const response = await this.fetchWithAuth(`${this.apiBase}/v2/search?${params.toString()}`);
         if (!response.ok) return null;
         const data = await response.json();
@@ -194,7 +204,7 @@ export class TidalIntegration {
                 attributes: {
                     name: playlist.name,
                     description: playlist.description || '',
-                    accessType: 'PRIVATE', // Can be PRIVATE or PUBLIC
+                    accessType: 'PRIVATE',
                 },
             },
         };
@@ -218,13 +228,21 @@ export class TidalIntegration {
         return response.ok;
     }
 
-    // Main transfer function adjusted for the new methods
+    // FINAL: The fully implemented transferToTidal function
     async transferToTidal(
         selectedTracks: SpotifyTrack[],
         selectedAlbums: SpotifyAlbum[],
         selectedPlaylists: SpotifyPlaylist[],
         onProgress: (progress: number, status: string) => void
-    ): Promise<any> {
+    ): Promise<{
+        success: boolean;
+        results: {
+            tracks: Array<{ original: SpotifyTrack; tidalUrl: string | null }>;
+            albums: Array<{ original: SpotifyAlbum; tidalUrl: string | null }>;
+            playlists: Array<{ original: SpotifyPlaylist; tidalUrl: string | null }>;
+        };
+        errors: string[];
+    }> {
         if (!this.isAuthenticated()) throw new Error('Not authenticated');
 
         const results: {
@@ -232,30 +250,52 @@ export class TidalIntegration {
             albums: Array<{ original: SpotifyAlbum; tidalUrl: string | null }>;
             playlists: Array<{ original: SpotifyPlaylist; tidalUrl: string | null }>;
         } = { tracks: [], albums: [], playlists: [] };
+
         const errors: string[] = [];
-        const totalItems = selectedPlaylists.length;
+        const totalItems = selectedTracks.length + selectedAlbums.length + selectedPlaylists.length;
         let processedItems = 0;
 
-        for (const playlist of selectedPlaylists) {
+        const updateProgress = (status: string) => {
             processedItems++;
-            onProgress(Math.round((processedItems / totalItems) * 100), `Creating playlist: ${playlist.name}`);
-            const newPlaylistId = await this.createPlaylist(playlist);
+            onProgress(Math.round((processedItems / totalItems) * 100), status);
+        };
 
+        onProgress(0, 'Starting Tidal transfer...');
+
+        for (const track of selectedTracks) {
+            const tidalId = await this.searchTrack(track);
+            results.tracks.push({ original: track, tidalUrl: tidalId ? `https://tidal.com/browse/track/${tidalId}` : null });
+            if (!tidalId) errors.push(`Track not found: ${track.name}`);
+            updateProgress(`Searching for track: ${track.name}`);
+            await new Promise(r => setTimeout(r, 250));
+        }
+
+        for (const album of selectedAlbums) {
+            const tidalId = await this.searchAlbum(album);
+            results.albums.push({ original: album, tidalUrl: tidalId ? `https://tidal.com/browse/album/${tidalId}` : null });
+            if (!tidalId) errors.push(`Album not found: ${album.name}`);
+            updateProgress(`Searching for album: ${album.name}`);
+            await new Promise(r => setTimeout(r, 250));
+        }
+
+        for (const playlist of selectedPlaylists) {
+            const newPlaylistId = await this.createPlaylist(playlist);
             if (newPlaylistId) {
                 const trackIds: string[] = [];
                 for (const track of playlist.tracks || []) {
                     const foundId = await this.searchTrack(track);
                     if (foundId) trackIds.push(foundId);
-                    await new Promise(r => setTimeout(r, 200)); // Rate limit
+                    await new Promise(r => setTimeout(r, 250));
                 }
-                if (trackIds.length > 0) {
-                    await this.addTracksToPlaylist(newPlaylistId, trackIds);
-                }
+                if (trackIds.length > 0) await this.addTracksToPlaylist(newPlaylistId, trackIds);
                 results.playlists.push({ original: playlist, tidalUrl: `https://tidal.com/browse/playlist/${newPlaylistId}` });
             } else {
                 errors.push(`Failed to create playlist: ${playlist.name}`);
+                results.playlists.push({ original: playlist, tidalUrl: null });
             }
+            updateProgress(`Processing playlist: ${playlist.name}`);
         }
+
         onProgress(100, 'Transfer complete!');
         return { success: errors.length === 0, results, errors };
     }
