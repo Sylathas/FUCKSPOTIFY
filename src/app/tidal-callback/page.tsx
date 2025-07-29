@@ -13,13 +13,21 @@ function TidalCallbackContent() {
 
     useEffect(() => {
         const handleCallback = async () => {
+            console.log('=== TIDAL CALLBACK PAGE LOADED ===')
+
             try {
                 const code = searchParams.get('code')
                 const state = searchParams.get('state')
-                const error = searchParams.get('error')
+                const errorParam = searchParams.get('error')
 
-                if (error) {
-                    throw new Error(`Tidal OAuth error: ${error}`)
+                console.log('URL params:', {
+                    code: code ? 'Present' : 'Missing',
+                    state: state ? 'Present' : 'Missing',
+                    error: errorParam
+                })
+
+                if (errorParam) {
+                    throw new Error(`Tidal OAuth error: ${errorParam}`)
                 }
 
                 if (!code || !state) {
@@ -27,8 +35,9 @@ function TidalCallbackContent() {
                 }
 
                 setStatus('loading')
+                console.log('Calling tidalIntegration.handleCallback...')
 
-                // Handle the OAuth callback
+                // This should trigger the "=== TIDAL CALLBACK STARTED ===" log
                 const user = await tidalIntegration.handleCallback(code, state)
 
                 console.log('Tidal login successful:', user)
@@ -58,6 +67,7 @@ function TidalCallbackContent() {
                             <div className="animate-spin h-8 w-8 border-2 border-green-400 border-t-transparent rounded-full mx-auto"></div>
                         </div>
                         <p>Connecting to Tidal...</p>
+                        <p className="text-xs text-gray-400 mt-2">Check console for detailed logs</p>
                     </>
                 )}
 
