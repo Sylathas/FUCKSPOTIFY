@@ -1,27 +1,64 @@
-// src/app/api/tidal/auth/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+
+// Use the server-side-only environment variable name
+const TIDAL_CLIENT_ID = process.env.TIDAL_CLIENT_ID;
+const TIDAL_TOKEN_URL = 'https://auth.tidal.com/token';
 
 export async function POST(request: NextRequest) {
     try {
-        const { code } = await request.json();
+        const { code, redirectUri, codeVerifier } = await request.json();
 
-        // We are NOT calling the Tidal API.
-        // We are just checking if this function can run at all on Vercel
-        // without returning a 403 error.
-        console.log(`DEBUG: API Route was called successfully. Code received: ${code ? 'Yes' : 'No'}`);
+        if (!code || !redirectUri || !codeVerifier) {
+            return NextResponse.json(
+                { error: 'Missing required parameters' },
+                { status: 400 }
+            );
+        }
 
-        // Return a custom "teapot" error code.
-        // If we see this 418 error in the browser console, it's a success!
-        // It means the Vercel function ran and was not blocked.
-        return NextResponse.json(
-            { message: "DEBUGGING: Bypassed Tidal fetch. If you see this, the function is working." },
-            { status: 418 } // Using "I'm a teapot" as a unique success indicator for our test
-        );
+        if (!TIDAL_CLIENT_ID) {
+            console.error('TIDAL_CLIENT_ID is not configured on the server.');
+            return NextResponse.json(
+                { error: 'Server configuration error.' },
+                { status: 500 }
+            );
+        }
+
+        const requestBody = new URLSearchParams({
+            grant_type: 'authorization_code',
+            client_id: TIDAL_CLIENT_ID,
+            code: code,
+            redirect_uri: redirectUri,
+            code_verifier: codeVerifier,
+        });
+
+        const tokenResponse = await fetch(TIDAL_TOKEN_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: requestBody,
+        });
+
+        const tokenData = await tokenResponse.json();
+
+        if (!tokenResponse.ok) {
+            console.error('Tidal token exchange failed:', tokenData);
+            return NextResponse.json(
+                {
+                    error: `Token exchange failed: ${tokenResponse.status}`,
+                    details: tokenData,
+                },
+                { status: tokenResponse.status }
+            );
+        }
+
+        return NextResponse.json(tokenData);
 
     } catch (error) {
-        console.error('DEBUG: The API route crashed.', error);
+        console.error('Tidal auth API route error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
         return NextResponse.json(
-            { error: 'DEBUG: The API route itself has an error.' },
+            { error: 'Internal server error', details: errorMessage },
             { status: 500 }
         );
     }
