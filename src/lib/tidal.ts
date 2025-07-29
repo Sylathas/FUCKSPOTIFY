@@ -10,8 +10,13 @@ const TIDAL_AUTH_BASE = 'https://login.tidal.com'
 const TIDAL_TOKEN_BASE = 'https://auth.tidal.com'
 
 // Required scopes for playlist creation and management
-const TIDAL_SCOPES = 'user.read'
-
+const TIDAL_SCOPES = [
+    'user.read',
+    'collection.read',
+    'collection.write',
+    'playlists.read',
+    'playlists.write'
+].join(' ')
 
 interface TidalUser {
     id: string
