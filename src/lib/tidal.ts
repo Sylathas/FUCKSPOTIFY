@@ -392,7 +392,8 @@ export class TidalIntegration {
                     attributes: {
                         name: playlist.name,
                         description: playlist.description || `Imported from Spotify: ${playlist.name}`,
-                        publicPlaylist: false // Set to true if you want public playlists
+                        // CORRECT: Use 'accessType' with string values
+                        accessType: 'PRIVATE' // Or 'PUBLIC' if you want them to be public
                     }
                 }
             };
