@@ -11,10 +11,10 @@ const TIDAL_AUTH_BASE = 'https://auth.tidal.com'
 
 // Required scopes for playlist creation and management
 const TIDAL_SCOPES = [
-    'r_usr',     // Read user data
-    'w_usr',     // Write user data  
-    'w_sub',     // Write subscription data (playlists)
-    'r_sub'      // Read subscription data
+    'collection.read',     // Read access to user's "My Collection"
+    'collection.write',    // Write access to user's "My Collection" 
+    'playlists.write',     // Write access to user's playlists
+    'user.read'            // Read access to user's account information
 ].join(' ')
 
 interface TidalTokenResponse {
@@ -158,6 +158,11 @@ export class TidalIntegration {
             throw new Error('Tidal Client ID is not configured. Please add NEXT_PUBLIC_TIDAL_CLIENT_ID to your environment variables.')
         }
 
+        console.log('Tidal OAuth Config Check:')
+        console.log('CLIENT_ID:', TIDAL_CLIENT_ID ? 'Set' : 'Missing')
+        console.log('CLIENT_SECRET:', TIDAL_CLIENT_SECRET ? 'Set' : 'Missing')
+        console.log('REDIRECT_URI:', TIDAL_REDIRECT_URI)
+
         const state = generateRandomString(16)
 
         // Store state for verification
@@ -181,22 +186,35 @@ export class TidalIntegration {
 
     // Step 2: Handle OAuth callback
     async handleCallback(code: string, state: string): Promise<TidalUser> {
+        console.log('Tidal callback received:', { code: code ? 'Present' : 'Missing', state: state ? 'Present' : 'Missing' })
+
         // Verify state
         const storedState = typeof window !== 'undefined' ? sessionStorage.getItem('tidal_auth_state') : null
+        console.log('State verification:', { received: state, stored: storedState, match: state === storedState })
+
         if (state !== storedState) {
             throw new Error('State mismatch - possible CSRF attack')
         }
 
         if (!TIDAL_CLIENT_ID || !TIDAL_CLIENT_SECRET) {
+            console.error('Missing Tidal credentials:', {
+                clientId: TIDAL_CLIENT_ID ? 'Set' : 'Missing',
+                clientSecret: TIDAL_CLIENT_SECRET ? 'Set' : 'Missing'
+            })
             throw new Error('Tidal credentials not configured')
         }
 
         // Exchange code for tokens
+        console.log('Attempting token exchange with Tidal...')
+
+        const credentials = btoa(`${TIDAL_CLIENT_ID}:${TIDAL_CLIENT_SECRET}`)
+        console.log('Authorization header prepared (base64 encoded credentials)')
+
         const tokenResponse = await fetch(`${TIDAL_AUTH_BASE}/v1/oauth2/token`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Basic ${btoa(`${TIDAL_CLIENT_ID}:${TIDAL_CLIENT_SECRET}`)}`
+                'Authorization': `Basic ${credentials}`
             },
             body: new URLSearchParams({
                 grant_type: 'authorization_code',
@@ -205,16 +223,32 @@ export class TidalIntegration {
             }),
         })
 
+        console.log('Token response status:', tokenResponse.status)
+
         if (!tokenResponse.ok) {
-            const error = await tokenResponse.text()
-            throw new Error(`Failed to exchange code for token: ${error}`)
+            const errorText = await tokenResponse.text()
+            console.error('Token exchange failed:', {
+                status: tokenResponse.status,
+                statusText: tokenResponse.statusText,
+                error: errorText
+            })
+            throw new Error(`Failed to exchange code for token: ${tokenResponse.status} - ${errorText}`)
         }
 
         const tokenData: TidalTokenResponse = await tokenResponse.json()
+        console.log('Token exchange successful:', {
+            hasAccessToken: !!tokenData.access_token,
+            hasRefreshToken: !!tokenData.refresh_token,
+            expiresIn: tokenData.expires_in,
+            scope: tokenData.scope
+        })
+
         this.storeTokens(tokenData)
 
         // Get user profile
+        console.log('Fetching user profile...')
         const userProfile = await this.getUserProfile()
+        console.log('User profile retrieved:', userProfile.username || userProfile.id)
 
         return userProfile
     }

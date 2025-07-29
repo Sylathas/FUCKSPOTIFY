@@ -39,6 +39,16 @@ export default function MusicSelectorSection({
     const [hasMoreAlbums, setHasMoreAlbums] = useState(true)
     const [hasMorePlaylists, setHasMorePlaylists] = useState(true)
 
+    // Select All states - track if we're selecting all vs just loaded
+    const [selectingAllTracks, setSelectingAllTracks] = useState(false)
+    const [selectingAllAlbums, setSelectingAllAlbums] = useState(false)
+    const [selectingAllPlaylists, setSelectingAllPlaylists] = useState(false)
+
+    // Total counts for "select all" functionality
+    const [totalTracksCount, setTotalTracksCount] = useState<number | null>(null)
+    const [totalAlbumsCount, setTotalAlbumsCount] = useState<number | null>(null)
+    const [totalPlaylistsCount, setTotalPlaylistsCount] = useState<number | null>(null)
+
     const [error, setError] = useState<string | null>(null)
 
     // Refs for scroll containers
@@ -62,6 +72,9 @@ export default function MusicSelectorSection({
             setHasMoreTracks(true)
             setHasMoreAlbums(true)
             setHasMorePlaylists(true)
+            setTotalTracksCount(null)
+            setTotalAlbumsCount(null)
+            setTotalPlaylistsCount(null)
         }
     }, [spotifyUser])
 
@@ -80,6 +93,70 @@ export default function MusicSelectorSection({
         }
     }
 
+    // Get total count by loading first batch and checking if there's more
+    const getTotalCount = async (type: 'tracks' | 'albums' | 'playlists'): Promise<number> => {
+        try {
+            let total = 0
+            let offset = 0
+            const limit = 50
+
+            while (true) {
+                let response
+                if (type === 'tracks') {
+                    response = await spotifyAuth.getUserTracks(offset, limit)
+                } else if (type === 'albums') {
+                    response = await spotifyAuth.getUserAlbums(offset, limit)
+                } else {
+                    response = await spotifyAuth.getUserPlaylists(offset, limit)
+                }
+
+                total += response.length
+
+                if (response.length < limit) {
+                    break // No more items
+                }
+                offset += limit
+            }
+
+            return total
+        } catch (error) {
+            console.error(`Error getting total ${type} count:`, error)
+            return 0
+        }
+    }
+
+    // Load all items of a specific type
+    const loadAllItems = async (type: 'tracks' | 'albums' | 'playlists') => {
+        try {
+            const allItems = []
+            let offset = 0
+            const limit = 50
+
+            while (true) {
+                let response
+                if (type === 'tracks') {
+                    response = await spotifyAuth.getUserTracks(offset, limit)
+                } else if (type === 'albums') {
+                    response = await spotifyAuth.getUserAlbums(offset, limit)
+                } else {
+                    response = await spotifyAuth.getUserPlaylists(offset, limit)
+                }
+
+                allItems.push(...response)
+
+                if (response.length < limit) {
+                    break // No more items
+                }
+                offset += limit
+            }
+
+            return allItems
+        } catch (error) {
+            console.error(`Error loading all ${type}:`, error)
+            return []
+        }
+    }
+
     const loadMoreTracks = async (reset = false) => {
         if (loadingTracks || (!hasMoreTracks && !reset)) return
 
@@ -90,19 +167,27 @@ export default function MusicSelectorSection({
 
             if (reset) {
                 setTracks(response)
+                // Get total count on first load
+                if (totalTracksCount === null) {
+                    // Quick estimate: if we got 50 items, there might be more
+                    if (response.length === 50) {
+                        // Load a few more batches to get a better count estimate
+                        getTotalCount('tracks').then(count => {
+                            setTotalTracksCount(count)
+                        })
+                    } else {
+                        setTotalTracksCount(response.length)
+                    }
+                }
             } else {
                 setTracks(prev => [...prev, ...response])
             }
 
-            // If we got less than 50, we've reached the end
             setHasMoreTracks(response.length === 50)
         } catch (error) {
             console.error('Error loading tracks:', error)
             if (error instanceof Error && error.message.includes('Not authenticated')) {
                 setError('Authentication expired. Please log in again.')
-                // Clear stored user data
-                localStorage.removeItem('spotify_user')
-                localStorage.removeItem('spotify_access_token')
             }
         } finally {
             setLoadingTracks(false)
@@ -119,6 +204,15 @@ export default function MusicSelectorSection({
 
             if (reset) {
                 setAlbums(response)
+                if (totalAlbumsCount === null) {
+                    if (response.length === 50) {
+                        getTotalCount('albums').then(count => {
+                            setTotalAlbumsCount(count)
+                        })
+                    } else {
+                        setTotalAlbumsCount(response.length)
+                    }
+                }
             } else {
                 setAlbums(prev => [...prev, ...response])
             }
@@ -144,6 +238,15 @@ export default function MusicSelectorSection({
 
             if (reset) {
                 setPlaylists(response)
+                if (totalPlaylistsCount === null) {
+                    if (response.length === 50) {
+                        getTotalCount('playlists').then(count => {
+                            setTotalPlaylistsCount(count)
+                        })
+                    } else {
+                        setTotalPlaylistsCount(response.length)
+                    }
+                }
             } else {
                 setPlaylists(prev => [...prev, ...response])
             }
@@ -190,37 +293,64 @@ export default function MusicSelectorSection({
         }
     }, [loadingPlaylists, hasMorePlaylists])
 
-    // Selection handlers - now with toggle functionality
-    const handleSelectAllSongs = () => {
-        // If all currently loaded tracks are selected, deselect all. Otherwise, select all.
-        const allTracksSelected = tracks.length > 0 && tracks.every(track => selectedSongs.includes(track.id))
+    // Enhanced selection handlers that can select ALL items
+    const handleSelectAllSongs = async () => {
+        // Check if all currently visible tracks are selected
+        const allLoadedSelected = tracks.length > 0 && tracks.every(track => selectedSongs.includes(track.id))
 
-        if (allTracksSelected) {
-            // Deselect all tracks
+        if (allLoadedSelected && selectedSongs.length === tracks.length) {
+            // If only loaded tracks are selected, load and select ALL tracks
+            setSelectingAllTracks(true)
+            try {
+                const allTracks = await loadAllItems('tracks')
+                onSelectSongs(allTracks.map(track => track.id))
+                console.log(`Selected all ${allTracks.length} tracks`)
+            } catch (error) {
+                console.error('Error selecting all tracks:', error)
+            } finally {
+                setSelectingAllTracks(false)
+            }
+        } else {
+            // Deselect all
             onSelectSongs([])
-        } else {
-            // Select all currently loaded tracks
-            onSelectSongs(tracks.map(track => track.id))
         }
     }
 
-    const handleSelectAllAlbums = () => {
-        const allAlbumsSelected = albums.length > 0 && albums.every(album => selectedAlbums.includes(album.id))
+    const handleSelectAllAlbums = async () => {
+        const allLoadedSelected = albums.length > 0 && albums.every(album => selectedAlbums.includes(album.id))
 
-        if (allAlbumsSelected) {
+        if (allLoadedSelected && selectedAlbums.length === albums.length) {
+            setSelectingAllAlbums(true)
+            try {
+                const allAlbums = await loadAllItems('albums')
+                onSelectAlbums(allAlbums.map(album => album.id))
+                console.log(`Selected all ${allAlbums.length} albums`)
+            } catch (error) {
+                console.error('Error selecting all albums:', error)
+            } finally {
+                setSelectingAllAlbums(false)
+            }
+        } else {
             onSelectAlbums([])
-        } else {
-            onSelectAlbums(albums.map(album => album.id))
         }
     }
 
-    const handleSelectAllPlaylists = () => {
-        const allPlaylistsSelected = playlists.length > 0 && playlists.every(playlist => selectedPlaylists.includes(playlist.id))
+    const handleSelectAllPlaylists = async () => {
+        const allLoadedSelected = playlists.length > 0 && playlists.every(playlist => selectedPlaylists.includes(playlist.id))
 
-        if (allPlaylistsSelected) {
-            onSelectPlaylists([])
+        if (allLoadedSelected && selectedPlaylists.length === playlists.length) {
+            setSelectingAllPlaylists(true)
+            try {
+                const allPlaylists = await loadAllItems('playlists')
+                onSelectPlaylists(allPlaylists.map(playlist => playlist.id))
+                console.log(`Selected all ${allPlaylists.length} playlists`)
+            } catch (error) {
+                console.error('Error selecting all playlists:', error)
+            } finally {
+                setSelectingAllPlaylists(false)
+            }
         } else {
-            onSelectPlaylists(playlists.map(playlist => playlist.id))
+            onSelectPlaylists([])
         }
     }
 
@@ -246,6 +376,43 @@ export default function MusicSelectorSection({
         } else {
             onSelectPlaylists([...selectedPlaylists, playlistId])
         }
+    }
+
+    // Helper functions for button text
+    const getSelectAllTracksText = () => {
+        if (selectingAllTracks) return "Loading All..."
+        if (tracks.length > 0 && tracks.every(track => selectedSongs.includes(track.id))) {
+            if (selectedSongs.length === tracks.length && (totalTracksCount === null || tracks.length < totalTracksCount)) {
+                return "Select ALL"
+            } else {
+                return "Deselect All"
+            }
+        }
+        return "Select All"
+    }
+
+    const getSelectAllAlbumsText = () => {
+        if (selectingAllAlbums) return "Loading All..."
+        if (albums.length > 0 && albums.every(album => selectedAlbums.includes(album.id))) {
+            if (selectedAlbums.length === albums.length && (totalAlbumsCount === null || albums.length < totalAlbumsCount)) {
+                return "Select ALL"
+            } else {
+                return "Deselect All"
+            }
+        }
+        return "Select All"
+    }
+
+    const getSelectAllPlaylistsText = () => {
+        if (selectingAllPlaylists) return "Loading All..."
+        if (playlists.length > 0 && playlists.every(playlist => selectedPlaylists.includes(playlist.id))) {
+            if (selectedPlaylists.length === playlists.length && (totalPlaylistsCount === null || playlists.length < totalPlaylistsCount)) {
+                return "Select ALL"
+            } else {
+                return "Deselect All"
+            }
+        }
+        return "Select All"
     }
 
     return (
@@ -279,7 +446,7 @@ export default function MusicSelectorSection({
                         onScroll={handleTracksScroll}
                         className={`
               mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
-              ${isMobile ? 'h-32' : 'h-[260px]'}
+              ${isMobile ? 'h-32' : 'h-[75%]'}
             `}
                         style={{
                             borderStyle: 'inset',
@@ -295,6 +462,10 @@ export default function MusicSelectorSection({
                                 <div className="text-gray-400">No saved tracks found</div>
                             ) : (
                                 <>
+                                    <div className="text-yellow-400 text-center mb-2">
+                                        {selectedSongs.length} selected
+                                        {totalTracksCount && ` of ${totalTracksCount} total`}
+                                    </div>
                                     {tracks.map((track, index) => (
                                         <div
                                             key={track.id}
@@ -319,13 +490,14 @@ export default function MusicSelectorSection({
                     </div>
 
                     <div className="pb-5 px-2 h-[60px]">
-                        <img
-                            src="/Buttons/All.png"
-                            alt={tracks.length > 0 && tracks.every(track => selectedSongs.includes(track.id)) ? "Deselect All Songs" : "Select All Songs"}
+                        <button
                             onClick={handleSelectAllSongs}
-                            className="w-full h-[80%] cursor-pointer hover:opacity-80"
-                            title={tracks.length > 0 && tracks.every(track => selectedSongs.includes(track.id)) ? "Deselect All Songs" : "Select All Songs"}
-                        />
+                            disabled={selectingAllTracks}
+                            className="w-full h-[80%] bg-gray-800 text-green-400 border border-green-400 rounded cursor-pointer hover:bg-gray-700 transition-colors text-xs font-mono disabled:opacity-50"
+                            title={getSelectAllTracksText()}
+                        >
+                            {getSelectAllTracksText()}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -355,7 +527,7 @@ export default function MusicSelectorSection({
                         onScroll={handleAlbumsScroll}
                         className={`
               mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
-              ${isMobile ? 'h-32' : 'h-[260px]'}
+              ${isMobile ? 'h-32' : 'h-[75%]'}
             `}
                         style={{
                             borderStyle: 'inset',
@@ -371,6 +543,10 @@ export default function MusicSelectorSection({
                                 <div className="text-gray-400">No saved albums found</div>
                             ) : (
                                 <>
+                                    <div className="text-yellow-400 text-center mb-2">
+                                        {selectedAlbums.length} selected
+                                        {totalAlbumsCount && ` of ${totalAlbumsCount} total`}
+                                    </div>
                                     {albums.map((album) => (
                                         <div
                                             key={album.id}
@@ -395,13 +571,14 @@ export default function MusicSelectorSection({
                     </div>
 
                     <div className="pb-5 px-2 h-[60px]">
-                        <img
-                            src="/Buttons/All.png"
-                            alt={albums.length > 0 && albums.every(album => selectedAlbums.includes(album.id)) ? "Deselect All Albums" : "Select All Albums"}
+                        <button
                             onClick={handleSelectAllAlbums}
-                            className="w-full h-[80%] cursor-pointer hover:opacity-80"
-                            title={albums.length > 0 && albums.every(album => selectedAlbums.includes(album.id)) ? "Deselect All Albums" : "Select All Albums"}
-                        />
+                            disabled={selectingAllAlbums}
+                            className="w-full h-[80%] bg-gray-800 text-green-400 border border-green-400 rounded cursor-pointer hover:bg-gray-700 transition-colors text-xs font-mono disabled:opacity-50"
+                            title={getSelectAllAlbumsText()}
+                        >
+                            {getSelectAllAlbumsText()}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -431,7 +608,7 @@ export default function MusicSelectorSection({
                         onScroll={handlePlaylistsScroll}
                         className={`
               mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
-              ${isMobile ? 'h-32' : 'h-[260px]'}
+              ${isMobile ? 'h-32' : 'h-[75%]'}
             `}
                         style={{
                             borderStyle: 'inset',
@@ -447,6 +624,10 @@ export default function MusicSelectorSection({
                                 <div className="text-gray-400">No playlists found</div>
                             ) : (
                                 <>
+                                    <div className="text-yellow-400 text-center mb-2">
+                                        {selectedPlaylists.length} selected
+                                        {totalPlaylistsCount && ` of ${totalPlaylistsCount} total`}
+                                    </div>
                                     {playlists.map((playlist) => (
                                         <div
                                             key={playlist.id}
@@ -471,13 +652,14 @@ export default function MusicSelectorSection({
                     </div>
 
                     <div className="pb-5 px-2 h-[60px]">
-                        <img
-                            src="/Buttons/All.png"
-                            alt={playlists.length > 0 && playlists.every(playlist => selectedPlaylists.includes(playlist.id)) ? "Deselect All Playlists" : "Select All Playlists"}
+                        <button
                             onClick={handleSelectAllPlaylists}
-                            className="w-full h-[80%] cursor-pointer hover:opacity-80"
-                            title={playlists.length > 0 && playlists.every(playlist => selectedPlaylists.includes(playlist.id)) ? "Deselect All Playlists" : "Select All Playlists"}
-                        />
+                            disabled={selectingAllPlaylists}
+                            className="w-full h-[80%] bg-gray-800 text-green-400 border border-green-400 rounded cursor-pointer hover:bg-gray-700 transition-colors text-xs font-mono disabled:opacity-50"
+                            title={getSelectAllPlaylistsText()}
+                        >
+                            {getSelectAllPlaylistsText()}
+                        </button>
                     </div>
                 </div>
             </div>
