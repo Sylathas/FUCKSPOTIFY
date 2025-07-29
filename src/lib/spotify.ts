@@ -340,45 +340,38 @@ export class SpotifyAuth {
     // Get user's playlists with full details (paginated)
     async getUserPlaylists(offset = 0, limit = 50): Promise<SpotifyPlaylist[]> {
         if (!this.api) {
-            throw new Error('Not authenticated')
+            throw new Error('Not authenticated');
         }
 
         try {
-            const response = await this.api.currentUser.playlists.playlists(50, offset)
-            const playlists = response.items
+            // This is the only API call you need.
+            const response = await this.api.currentUser.playlists.playlists(50, offset);
 
-            // Get detailed information for each playlist
-            const detailedPlaylists = await Promise.all(
-                playlists.map(async (playlist) => {
-                    try {
-                        const fullPlaylist = await this.api!.playlists.getPlaylist(playlist.id)
+            // Map the results directly without making more calls.
+            const detailedPlaylists = response.items.map((playlist) => {
+                // All the data is already in the 'playlist' object from the response.
+                return {
+                    id: playlist.id,
+                    name: playlist.name,
+                    description: playlist.description || null,
+                    images: playlist.images,
+                    coverImage: playlist.images?.[0]?.url || undefined,
+                    trackCount: playlist.tracks?.total || 0,
+                    isPublic: playlist.public,
+                    collaborative: playlist.collaborative,
+                    owner: {
+                        id: playlist.owner.id,
+                        display_name: playlist.owner.display_name || null
+                    },
+                    spotifyUrl: playlist.external_urls.spotify,
+                };
+            });
 
-                        return {
-                            id: fullPlaylist.id,
-                            name: fullPlaylist.name,
-                            description: fullPlaylist.description || null,
-                            images: fullPlaylist.images,
-                            coverImage: fullPlaylist.images?.[0]?.url || undefined,
-                            trackCount: fullPlaylist.tracks.total,
-                            isPublic: fullPlaylist.public,
-                            collaborative: fullPlaylist.collaborative,
-                            owner: {
-                                id: fullPlaylist.owner.id,
-                                display_name: fullPlaylist.owner.display_name || null
-                            },
-                            spotifyUrl: fullPlaylist.external_urls.spotify,
-                        }
-                    } catch (error) {
-                        console.error(`Error fetching playlist ${playlist.id}:`, error)
-                        return null
-                    }
-                })
-            )
+            return detailedPlaylists;
 
-            return detailedPlaylists.filter(playlist => playlist !== null) as SpotifyPlaylist[]
         } catch (error) {
-            console.error('Error fetching playlists:', error)
-            throw error
+            console.error('Error fetching playlists:', error);
+            throw error;
         }
     }
 
