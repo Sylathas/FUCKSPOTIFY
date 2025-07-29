@@ -384,7 +384,7 @@ export class SpotifyAuth {
         try {
             const tracks = []
             let offset = 0
-            const limit = 50
+            const limit = 50 // Max limit for this endpoint
 
             while (true) {
                 const response = await this.api.playlists.getPlaylistItems(
@@ -418,14 +418,17 @@ export class SpotifyAuth {
                         isrc: item.track.external_ids?.isrc || null,
                         addedAt: item.added_at,
                         addedBy: item.added_by
-                    }))
+                    }));
 
                 tracks.push(...trackItems)
 
                 if (response.items.length < limit) {
-                    break
+                    break // Exit loop if we've fetched all tracks
                 }
                 offset += limit
+
+                // Wait for 250 milliseconds before the next request
+                await new Promise(resolve => setTimeout(resolve, 250));
             }
 
             return tracks
@@ -459,6 +462,8 @@ export class SpotifyAuth {
                 spotifyUrl: item.album.external_urls.spotify,
                 addedAt: item.added_at
             }))
+
+            await new Promise(resolve => setTimeout(resolve, 250));
 
             return albumItems
         } catch (error) {
@@ -497,6 +502,8 @@ export class SpotifyAuth {
                 isrc: item.track.external_ids?.isrc || null,
                 addedAt: item.added_at
             }))
+
+            await new Promise(resolve => setTimeout(resolve, 250));
 
             return trackItems
         } catch (error) {
