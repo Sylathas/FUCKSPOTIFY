@@ -509,7 +509,7 @@ export default function MusicSelectorSection({
                         />
                         {selectingAllPlaylists && (
                             <div className="flex justify-center mt-1">
-                                <img src="/loading.gif" alt="Loading" className="h-4 w-4" />
+                                <img src="/loading.gif" alt="Loading" className="h-4 w-10" />
                             </div>
                         )}
                     </div>

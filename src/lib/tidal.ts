@@ -413,7 +413,9 @@ export class TidalIntegration {
             const query = `${track.artists.map(a => a.name).join(' ')} ${track.name}`
             const countryCode = this.currentUser?.countryCode || 'US'
 
-            const url = `${TIDAL_API_BASE}/v2/searchresults/tracks?query=${encodeURIComponent(query)}&countryCode=${countryCode}&limit=5`
+            // Use the correct searchResults endpoint from API docs
+            const searchId = encodeURIComponent(query)
+            const url = `${TIDAL_API_BASE}/v2/searchResults/${searchId}?countryCode=${countryCode}&include=tracks&explicitFilter=include`
 
             console.log('Searching for track:', query, 'at URL:', url)
 
@@ -424,21 +426,30 @@ export class TidalIntegration {
                 }
             })
 
+            console.log('Track search response:', response.status, response.statusText)
+
             if (!response.ok) {
-                console.error('Track search failed:', response.status, response.statusText)
+                const errorText = await response.text()
+                console.error('Track search failed:', response.status, errorText)
                 return null
             }
 
             const data = await response.json()
-            console.log('Track search response:', data)
+            console.log('Track search response data:', data)
 
+            // Parse the searchResults response structure
             if (data.tracks?.items && data.tracks.items.length > 0) {
                 const bestMatch = data.tracks.items[0]
                 const trackId = bestMatch.resource?.id || bestMatch.id
-                return `https://tidal.com/browse/track/${trackId}`
+                if (trackId) {
+                    console.log('Found track:', trackId)
+                    return `https://tidal.com/browse/track/${trackId}`
+                }
             }
 
+            console.log('No tracks found for:', query)
             return null
+
         } catch (error) {
             console.error('Error searching Tidal for track:', error)
             return null
@@ -451,7 +462,9 @@ export class TidalIntegration {
             const query = `${album.artists.map(a => a.name).join(' ')} ${album.name}`
             const countryCode = this.currentUser?.countryCode || 'US'
 
-            const url = `${TIDAL_API_BASE}/v2/searchresults/albums?query=${encodeURIComponent(query)}&countryCode=${countryCode}&limit=5`
+            // Use the correct searchResults endpoint from API docs
+            const searchId = encodeURIComponent(query)
+            const url = `${TIDAL_API_BASE}/v2/searchResults/${searchId}?countryCode=${countryCode}&include=albums&explicitFilter=include`
 
             console.log('Searching for album:', query, 'at URL:', url)
 
@@ -462,21 +475,30 @@ export class TidalIntegration {
                 }
             })
 
+            console.log('Album search response:', response.status, response.statusText)
+
             if (!response.ok) {
-                console.error('Album search failed:', response.status, response.statusText)
+                const errorText = await response.text()
+                console.error('Album search failed:', response.status, errorText)
                 return null
             }
 
             const data = await response.json()
-            console.log('Album search response:', data)
+            console.log('Album search response data:', data)
 
+            // Parse the searchResults response structure
             if (data.albums?.items && data.albums.items.length > 0) {
                 const bestMatch = data.albums.items[0]
                 const albumId = bestMatch.resource?.id || bestMatch.id
-                return `https://tidal.com/browse/album/${albumId}`
+                if (albumId) {
+                    console.log('Found album:', albumId)
+                    return `https://tidal.com/browse/album/${albumId}`
+                }
             }
 
+            console.log('No albums found for:', query)
             return null
+
         } catch (error) {
             console.error('Error searching Tidal for album:', error)
             return null
@@ -488,21 +510,24 @@ export class TidalIntegration {
         try {
             const countryCode = this.currentUser?.countryCode || 'US'
 
-            // Create the playlist with proper JSON structure from API docs
+            // Use the exact format from API documentation
             const playlistData = {
                 data: {
-                    type: 'playlists',
                     attributes: {
-                        title: playlist.name,
-                        description: playlist.description || `Transferred from Spotify`,
-                        accessType: 'PRIVATE'  // Based on API docs, use accessType instead of public
-                    }
+                        accessType: "PUBLIC",  // From API docs - can be PUBLIC or PRIVATE
+                        description: playlist.description || "Transferred from Spotify",
+                        name: playlist.name
+                    },
+                    type: "playlists"
                 }
             }
 
-            console.log('Creating playlist with data:', playlistData)
+            const url = `${TIDAL_API_BASE}/v2/playlists?countryCode=${countryCode}`
 
-            const createResponse = await fetch(`${TIDAL_API_BASE}/v2/playlists?countryCode=${countryCode}`, {
+            console.log('Creating playlist with URL:', url)
+            console.log('Playlist data:', JSON.stringify(playlistData, null, 2))
+
+            const createResponse = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.accessToken}`,
@@ -529,16 +554,20 @@ export class TidalIntegration {
 
             const playlistId = createdPlaylist.data?.id
             if (!playlistId) {
-                console.error('No playlist ID in response')
+                console.error('No playlist ID in response:', createdPlaylist)
                 return null
             }
 
-            // Add tracks to the playlist if any exist
+            console.log('Playlist created successfully with ID:', playlistId)
+
+            // Add tracks to the playlist if any exist (with rate limiting)
             if (tracks.length > 0) {
-                await this.addTracksToPlaylist(playlistId, tracks)
+                console.log(`Adding ${tracks.length} tracks to playlist...`)
+                await this.addTracksToPlaylistWithRateLimit(playlistId, tracks)
             }
 
             return `https://tidal.com/browse/playlist/${playlistId}`
+
         } catch (error) {
             console.error('Error creating Tidal playlist:', error)
             return null
@@ -546,54 +575,118 @@ export class TidalIntegration {
     }
 
     // Add tracks to a playlist
-    private async addTracksToPlaylist(playlistId: string, tracks: SpotifyTrack[]): Promise<void> {
-        const tidalTrackIds: string[] = []
+    private async addTracksToPlaylistWithRateLimit(playlistId: string, tracks: SpotifyTrack[]): Promise<void> {
+        console.log(`Adding ${tracks.length} tracks to playlist ${playlistId}...`)
+
+        // Process tracks in smaller batches to avoid rate limiting
+        const batchSize = 3  // Reduced batch size to be more conservative
+        const trackBatches = []
+
+        for (let i = 0; i < tracks.length; i += batchSize) {
+            trackBatches.push(tracks.slice(i, i + batchSize))
+        }
+
+        for (let batchIndex = 0; batchIndex < trackBatches.length; batchIndex++) {
+            const batch = trackBatches[batchIndex]
+            console.log(`Processing batch ${batchIndex + 1}/${trackBatches.length}...`)
+
+            const tidalTrackIds: string[] = []
+
+            // Search for tracks in this batch
+            for (const track of batch) {
+                try {
+                    const trackUrl = await this.searchTrack(track)
+                    if (trackUrl) {
+                        const trackId = trackUrl.split('/track/')[1]
+                        if (trackId) {
+                            tidalTrackIds.push(trackId)
+                            console.log(`Found track ${track.name} with ID: ${trackId}`)
+                        }
+                    } else {
+                        console.log(`Track not found: ${track.name} by ${track.artists.map(a => a.name).join(', ')}`)
+                    }
+                } catch (error) {
+                    console.error(`Error searching for track ${track.name}:`, error)
+                }
+
+                // Delay between track searches to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 500))
+            }
+
+            if (tidalTrackIds.length === 0) {
+                console.log(`No tracks found in batch ${batchIndex + 1}`)
+                continue
+            }
+
+            // Try to add this batch of tracks
+            console.log(`Adding ${tidalTrackIds.length} tracks from batch ${batchIndex + 1}`)
+            await this.addTrackBatchToPlaylist(playlistId, tidalTrackIds)
+
+            // Delay between batches
+            if (batchIndex < trackBatches.length - 1) {
+                console.log('Waiting 2 seconds before next batch...')
+                await new Promise(resolve => setTimeout(resolve, 2000))
+            }
+        }
+    }
+
+    private async addTrackBatchToPlaylist(playlistId: string, trackIds: string[]): Promise<void> {
         const countryCode = this.currentUser?.countryCode || 'US'
 
-        // Search for tracks on Tidal
-        for (const track of tracks) {
-            const trackUrl = await this.searchTrack(track)
-            if (trackUrl) {
-                const trackId = trackUrl.split('/track/')[1]
-                if (trackId) {
-                    tidalTrackIds.push(trackId)
-                }
-            }
-            // Small delay to respect rate limits
-            await new Promise(resolve => setTimeout(resolve, 100))
-        }
-
-        if (tidalTrackIds.length === 0) {
-            console.log('No tracks found to add to playlist')
-            return
-        }
-
-        // Add tracks to playlist with proper JSON structure
+        // Based on the playlist creation pattern, try this structure
         const tracksData = {
-            data: tidalTrackIds.map(trackId => ({
+            data: trackIds.map(trackId => ({
                 type: 'tracks',
                 id: trackId
             }))
         }
 
-        console.log('Adding tracks to playlist:', tracksData)
+        // Try different endpoints for adding tracks to playlists
+        const addTrackEndpoints = [
+            `/v2/playlists/${playlistId}/items?countryCode=${countryCode}`,
+            `/v2/playlists/${playlistId}/tracks?countryCode=${countryCode}`,
+            `/v2/playlists/${playlistId}/relationships/items?countryCode=${countryCode}`,
+            `/v1/playlists/${playlistId}/tracks?countryCode=${countryCode}`
+        ]
 
-        const response = await fetch(`${TIDAL_API_BASE}/v2/playlists/${playlistId}/relationships/items?countryCode=${countryCode}`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
-                'Accept': 'application/vnd.tidal.v1+json',
-                'Content-Type': 'application/vnd.tidal.v1+json'
-            },
-            body: JSON.stringify(tracksData)
-        })
+        for (const endpoint of addTrackEndpoints) {
+            try {
+                const url = `${TIDAL_API_BASE}${endpoint}`
+                console.log(`Trying to add ${trackIds.length} tracks with endpoint:`, url)
+                console.log('Track data:', JSON.stringify(tracksData, null, 2))
 
-        if (!response.ok) {
-            const errorText = await response.text()
-            console.error(`Failed to add tracks to playlist: ${response.status} - ${errorText}`)
-        } else {
-            console.log(`Successfully added ${tidalTrackIds.length} tracks to playlist`)
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.accessToken}`,
+                        'Accept': 'application/vnd.tidal.v1+json',
+                        'Content-Type': 'application/vnd.tidal.v1+json'
+                    },
+                    body: JSON.stringify(tracksData)
+                })
+
+                console.log(`Add tracks response for ${endpoint}:`, response.status, response.statusText)
+
+                if (response.ok) {
+                    console.log(`✅ Successfully added ${trackIds.length} tracks with endpoint:`, endpoint)
+                    return
+                } else {
+                    const errorText = await response.text()
+                    console.log(`❌ Add tracks endpoint ${endpoint} failed:`, response.status, errorText)
+
+                    if (response.status === 429) {
+                        console.log('Rate limited, waiting 3 seconds...')
+                        await new Promise(resolve => setTimeout(resolve, 3000))
+                    }
+                }
+
+            } catch (error) {
+                console.error(`Error with add tracks endpoint ${endpoint}:`, error)
+                continue
+            }
         }
+
+        console.log(`⚠️  Failed to add tracks to playlist ${playlistId} with any endpoint`)
     }
 
     // Main transfer function
