@@ -39,7 +39,7 @@ export default function PlatformSelectorSection({
     const handlePlatformClick = async (platformName: string) => {
         if (platformName === 'TIDAL') {
             console.log('Tidal Environment Check:', {
-                clientId: process.env.TIDAL_CLIENT_ID ? 'Set' : 'Missing',
+                clientId: process.env.NEXT_PUBLIC_TIDAL_CLIENT_ID ? 'Set' : 'Missing',
                 redirectUri: process.env.NEXT_PUBLIC_TIDAL_REDIRECT_URI || 'Default used'
             })
             if (!tidalUser) {
