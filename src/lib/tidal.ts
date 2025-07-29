@@ -77,6 +77,26 @@ function generateCodeVerifier(): string {
     return result
 }
 
+// Add this helper function somewhere in your tidal.ts file
+function parseJwt(token: string) {
+    try {
+        const base64Url = token.split('.')[1]; // Get the payload part
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(
+            atob(base64)
+                .split('')
+                .map(function (c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                })
+                .join('')
+        );
+        return JSON.parse(jsonPayload);
+    } catch (e) {
+        console.error("Failed to parse JWT", e);
+        return null;
+    }
+}
+
 async function generateCodeChallenge(codeVerifier: string): Promise<string> {
     // Create SHA256 hash of the code verifier
     const encoder = new TextEncoder()
@@ -194,20 +214,15 @@ export class TidalIntegration {
         }
 
         const codeVerifier = typeof window !== 'undefined' ? localStorage.getItem('tidal_code_verifier') : null;
-
         if (!codeVerifier) {
             throw new Error('Code verifier not found');
         }
 
-        // Exchange code for token through your backend
+        // Exchange code for token
         const response = await fetch('/api/tidal/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                code,
-                redirectUri: TIDAL_REDIRECT_URI,
-                codeVerifier
-            }),
+            body: JSON.stringify({ code, redirectUri: TIDAL_REDIRECT_URI, codeVerifier }),
         });
 
         if (!response.ok) {
@@ -219,13 +234,36 @@ export class TidalIntegration {
         const tokenData = await response.json();
         this.storeTokens(tokenData);
 
-        // Clean up auth state
+        // *** NEW LOGIC STARTS HERE ***
+
+        // Decode the access token to get user info
+        const tokenPayload = parseJwt(tokenData.access_token);
+        if (!tokenPayload) {
+            throw new Error("Failed to parse access token");
+        }
+
+        // The user ID is in the 'sub' (subject) claim of the token
+        const userId = tokenPayload.sub;
+        // The country code is often in a 'countryCode' claim
+        const countryCode = tokenPayload.countryCode || 'US';
+
+        this.countryCode = countryCode; // Update the instance's country code
+
+        this.currentUser = {
+            id: userId,
+            username: tokenPayload.email || `Tidal User ${userId}`, // Use email or a fallback
+            email: tokenPayload.email,
+            countryCode: countryCode,
+        };
+
+        // Store the user data in localStorage
         if (typeof window !== 'undefined') {
+            localStorage.setItem('tidal_user', JSON.stringify(this.currentUser));
             localStorage.removeItem('tidal_auth_state');
             localStorage.removeItem('tidal_code_verifier');
         }
 
-        return this.getUserProfile();
+        return this.currentUser;
     }
 
     private async fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
