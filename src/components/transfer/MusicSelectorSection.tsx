@@ -446,7 +446,7 @@ export default function MusicSelectorSection({
                         onScroll={handleTracksScroll}
                         className={`
               mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
-              ${isMobile ? 'h-32' : 'h-[75%]'}
+              ${isMobile ? 'h-32' : 'h-[260px]'}
             `}
                         style={{
                             borderStyle: 'inset',
@@ -527,7 +527,7 @@ export default function MusicSelectorSection({
                         onScroll={handleAlbumsScroll}
                         className={`
               mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
-              ${isMobile ? 'h-32' : 'h-[75%]'}
+              ${isMobile ? 'h-32' : 'h-[260px]'}
             `}
                         style={{
                             borderStyle: 'inset',
@@ -608,7 +608,7 @@ export default function MusicSelectorSection({
                         onScroll={handlePlaylistsScroll}
                         className={`
               mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto
-              ${isMobile ? 'h-32' : 'h-[75%]'}
+              ${isMobile ? 'h-32' : 'h-[260px]'}
             `}
                         style={{
                             borderStyle: 'inset',
