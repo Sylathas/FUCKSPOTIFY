@@ -118,6 +118,8 @@ export class TidalIntegration {
             sessionStorage.setItem('tidal_auth_state', state)
         }
 
+        console.log('TIDAL_REDIRECT_URI being used:', TIDAL_REDIRECT_URI);
+
         const params = new URLSearchParams({
             response_type: 'code',
             client_id: TIDAL_CLIENT_ID,

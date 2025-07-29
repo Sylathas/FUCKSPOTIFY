@@ -72,7 +72,7 @@ export default function PlatformSelectorSection({
         <div
             className={`
         relative bg-cover bg-center bg-no-repeat flex flex-col items-center justify-center p-4
-        ${isMobile ? 'h-[150px]' : 'h-[100%]'}
+        ${isMobile ? 'h-[300px]' : 'h-[100%]'}
       `}
             style={{
                 backgroundImage: "url('/Buttons/UI_Background.png')",
@@ -100,7 +100,7 @@ export default function PlatformSelectorSection({
                                             ? 'hover:brightness-110 hover:scale-102'
                                             : 'opacity-50 cursor-not-allowed'
                                     }
-                  ${isMobile ? 'max-h-4' : 'max-h-10'}
+                  ${isMobile ? 'max-h-9' : 'max-h-10'}
                 `}
                                 title={
                                     isTidal

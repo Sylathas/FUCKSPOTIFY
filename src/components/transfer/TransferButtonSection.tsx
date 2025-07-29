@@ -136,7 +136,7 @@ export default function TransferButtonSection({
             className={`
         relative bg-cover bg-center bg-no-repeat
         flex items-center justify-center
-        ${isMobile ? 'h-[150px]' : 'h-[100%]'}
+        ${isMobile ? 'h-[300px]' : 'h-[100%]'}
       `}
             style={{
                 backgroundImage: "url('/Buttons/UI_Background.png')",
@@ -167,7 +167,7 @@ export default function TransferButtonSection({
                 alt="Transfer"
                 onClick={handleTransfer}
                 className={`
-          ${isMobile ? 'w-[80%] h-auto' : 'w-[90%] h-auto'}
+          ${isMobile ? 'w-[80%] h-[200px]' : 'w-[90%] h-auto'}
           ${transferReady && !isTransferring
                         ? 'cursor-pointer hover:opacity-80 hover:scale-105 transition-all'
                         : 'cursor-not-allowed'
@@ -186,7 +186,7 @@ export default function TransferButtonSection({
 
             {/* Status text */}
             {!isTransferring && (
-                <div className="absolute bottom-2 left-0 right-0 text-center">
+                <div className="absolute bottom-8 left-0 right-0 text-center">
                     <p className={`text-xs font-mono ${transferReady ? 'text-green-400' : 'text-yellow-400'}`}>
                         {transferReady
                             ? `Ready: ${totalSelected} items → ${selectedPlatform}`

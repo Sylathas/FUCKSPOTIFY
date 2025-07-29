@@ -61,15 +61,13 @@ export default function TransferUI() {
         <div className="w-full h-[50vh] flex items-center justify-center">
             <div className="max-w-[95%] w-full h-full">
 
-                {/* Transfer UI Container */}
                 <div className={`
           ${isMobile
-                        ? 'flex flex-col space-y-6'
+                        ? 'flex flex-col'
                         : 'grid grid-cols-6 h-full'
                     }
         `}>
 
-                    {/* Section 1: Login to Spotify */}
                     <div className={isMobile ? 'w-full' : 'col-span-1'}>
                         <SpotifyLoginSection
                             isMobile={isMobile}
@@ -78,7 +76,6 @@ export default function TransferUI() {
                         />
                     </div>
 
-                    {/* Section 2-4: Select Songs/Albums/Playlists (3 columns) */}
                     <div className={isMobile ? 'w-full' : 'col-span-3'}>
                         <MusicSelectorSection
                             isMobile={isMobile}
@@ -92,7 +89,6 @@ export default function TransferUI() {
                         />
                     </div>
 
-                    {/* Section 5: Choose Platform */}
                     <div className={isMobile ? 'w-full' : 'col-span-1'}>
                         <PlatformSelectorSection
                             isMobile={isMobile}
@@ -101,7 +97,6 @@ export default function TransferUI() {
                         />
                     </div>
 
-                    {/* Section 6: Transfer Button */}
                     <div className={isMobile ? 'w-full' : 'col-span-1'}>
                         <TransferButtonSection
                             isMobile={isMobile}

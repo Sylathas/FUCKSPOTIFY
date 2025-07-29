@@ -66,7 +66,7 @@ export default function SpotifyLoginSection({
             className={`
         relative bg-cover bg-center bg-no-repeat
         flex items-center justify-center
-        ${isMobile ? 'h-full' : 'h-full'}
+        ${isMobile ? 'h-[200px]' : 'h-full'}
       `}
             style={{
                 backgroundImage: "url('/Buttons/UI_Background.png')", // UI background image
@@ -79,7 +79,7 @@ export default function SpotifyLoginSection({
                     src="/Buttons/Logged.png" // Your "logged in" button image
                     alt="Spotify Connected"
                     className={`
-            ${isMobile ? 'w-[80%] h-auto' : 'w-[90%] h-[20%]'}
+            ${isMobile ? 'w-[90%] h-auto' : 'w-[90%] h-[20%]'}
             cursor-pointer hover:opacity-80 transition-opacity
           `}
                 />

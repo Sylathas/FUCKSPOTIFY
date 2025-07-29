@@ -316,7 +316,7 @@ export default function MusicSelectorSection({
             {/* SONGS */}
             <div className="flex flex-col">
                 <div
-                    className={`relative bg-cover bg-center bg-no-repeat flex-1 flex flex-col ${isMobile ? 'h-[200px]' : 'h-[100%]'}`}
+                    className={`relative bg-cover bg-center bg-no-repeat flex-1 flex flex-col h-[100%]`}
                     style={{
                         backgroundImage: "url('/Buttons/UI_Background_Choose.png')",
                         backgroundSize: '100% 100%'
@@ -324,14 +324,14 @@ export default function MusicSelectorSection({
                 >
                     {/* Title */}
                     <div className="pt-12 pb-3 px-3">
-                        <img src="/SONGS.png" alt="Songs" className="w-full h-auto" />
+                        <img src="/SONGS.png" alt="Songs" className={`w-full ${isMobile ? 'h-[20px]' : 'h-auto'}`} />
                     </div>
 
                     {/* Scrollable list */}
                     <div
                         ref={tracksScrollRef}
                         onScroll={handleTracksScroll}
-                        className={`mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto ${isMobile ? 'h-32' : 'h-[260px]'}`}
+                        className={`mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto ${isMobile ? 'h-[300px]' : 'h-[260px]'}`}
                         style={{
                             borderStyle: 'inset',
                             boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.5)'
@@ -387,20 +387,20 @@ export default function MusicSelectorSection({
             {/* ALBUMS */}
             <div className="flex flex-col">
                 <div
-                    className={`relative bg-cover bg-center bg-no-repeat flex-1 flex flex-col ${isMobile ? 'h-[200px]' : 'h-[100%]'}`}
+                    className={`relative bg-cover bg-center bg-no-repeat flex-1 flex flex-col h-[100%]`}
                     style={{
                         backgroundImage: "url('/Buttons/UI_Background_Choose.png')",
                         backgroundSize: '100% 100%'
                     }}
                 >
                     <div className="pt-12 pb-3 px-3">
-                        <img src="/ALBUMS.png" alt="Albums" className="w-full h-auto" />
+                        <img src="/ALBUMS.png" alt="Albums" className={`w-full ${isMobile ? 'h-[20px]' : 'h-auto'}`} />
                     </div>
 
                     <div
                         ref={albumsScrollRef}
                         onScroll={handleAlbumsScroll}
-                        className={`mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto ${isMobile ? 'h-32' : 'h-[260px]'}`}
+                        className={`mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto ${isMobile ? 'h-[300px]' : 'h-[260px]'}`}
                         style={{
                             borderStyle: 'inset',
                             boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.5)'
@@ -453,20 +453,20 @@ export default function MusicSelectorSection({
             {/* PLAYLISTS */}
             <div className="flex flex-col">
                 <div
-                    className={`relative bg-cover bg-center bg-no-repeat flex-1 flex flex-col ${isMobile ? 'h-[200px]' : 'h-[100%]'}`}
+                    className={`relative bg-cover bg-center bg-no-repeat flex-1 flex flex-col h-[100%]`}
                     style={{
                         backgroundImage: "url('/Buttons/UI_Background_Choose.png')",
                         backgroundSize: '100% 100%'
                     }}
                 >
                     <div className="pt-12 pb-3 px-3">
-                        <img src="/PLAYLISTS.png" alt="Playlists" className="w-full h-auto" />
+                        <img src="/PLAYLISTS.png" alt="Playlists" className={`w-full ${isMobile ? 'h-[20px]' : 'h-auto'}`} />
                     </div>
 
                     <div
                         ref={playlistsScrollRef}
                         onScroll={handlePlaylistsScroll}
-                        className={`mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto ${isMobile ? 'h-32' : 'h-[260px]'}`}
+                        className={`mx-2 mb-2 bg-black border-2 border-gray-600 overflow-auto ${isMobile ? 'h-[300px]' : 'h-[260px]'}`}
                         style={{
                             borderStyle: 'inset',
                             boxShadow: 'inset 2px 2px 4px rgba(0,0,0,0.5)'

@@ -58,7 +58,7 @@ export default function HandsComponent({
             className={`
                 absolute z-10 transition-none
                 ${isMobile
-                    ? 'w-32 h-32 top-1/2 left-1/2'
+                    ? 'w-7/8 h-6/8 top-1/2 left-1/2'
                     : 'w-7/8 h-7/8 top-1/2 left-1/2'
                 }
             `}
