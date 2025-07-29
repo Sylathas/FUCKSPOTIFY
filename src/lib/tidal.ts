@@ -5,7 +5,7 @@ const TIDAL_CLIENT_ID = process.env.NEXT_PUBLIC_TIDAL_CLIENT_ID
 const TIDAL_REDIRECT_URI = process.env.NEXT_PUBLIC_TIDAL_REDIRECT_URI ||
     (typeof window !== 'undefined' ? `${window.location.origin}/tidal-callback` : 'http://localhost:3000/tidal-callback')
 
-const TIDAL_API_BASE = 'https://openapi.tidal.com'
+const TIDAL_API_BASE = 'https://api.tidal.com'
 const TIDAL_AUTH_BASE = 'https://login.tidal.com'
 const TIDAL_TOKEN_BASE = 'https://auth.tidal.com'
 
@@ -64,98 +64,92 @@ async function generateCodeChallenge(codeVerifier: string): Promise<string> {
 }
 
 export class TidalIntegration {
-    private accessToken: string | null = null
-    private refreshToken: string | null = null
-    private tokenExpires: number | null = null
-    private currentUser: TidalUser | null = null
+    private accessToken: string | null = null;
+    private refreshToken: string | null = null;
+    private tokenExpires: number | null = null;
+    private currentUser: TidalUser | null = null;
 
     constructor() {
-        this.loadStoredTokens()
+        this.loadStoredTokens();
     }
 
     // Load tokens from localStorage
     private loadStoredTokens(): void {
-        if (typeof window === 'undefined') return
+        if (typeof window === 'undefined') return;
 
-        this.accessToken = localStorage.getItem('tidal_access_token')
-        this.refreshToken = localStorage.getItem('tidal_refresh_token')
-        const expires = localStorage.getItem('tidal_token_expires')
-        this.tokenExpires = expires ? parseInt(expires) : null
+        this.accessToken = localStorage.getItem('tidal_access_token');
+        this.refreshToken = localStorage.getItem('tidal_refresh_token');
+        const expires = localStorage.getItem('tidal_token_expires');
+        this.tokenExpires = expires ? parseInt(expires) : null;
 
-        const userData = localStorage.getItem('tidal_user')
+        const userData = localStorage.getItem('tidal_user');
         if (userData) {
             try {
-                this.currentUser = JSON.parse(userData)
+                this.currentUser = JSON.parse(userData);
             } catch (error) {
-                console.error('Error parsing stored Tidal user data:', error)
+                console.error('Error parsing stored Tidal user data:', error);
             }
         }
     }
 
     // Store tokens in localStorage
     private storeTokens(tokenData: any): void {
-        if (typeof window === 'undefined') return
+        if (typeof window === 'undefined') return;
 
-        this.accessToken = tokenData.access_token
-        this.refreshToken = tokenData.refresh_token || null
-        this.tokenExpires = Date.now() + (tokenData.expires_in * 1000)
+        this.accessToken = tokenData.access_token;
+        this.refreshToken = tokenData.refresh_token || null;
+        this.tokenExpires = Date.now() + (tokenData.expires_in * 1000);
 
-        localStorage.setItem('tidal_access_token', this.accessToken || '')
+        localStorage.setItem('tidal_access_token', this.accessToken || '');
         if (this.refreshToken) {
-            localStorage.setItem('tidal_refresh_token', this.refreshToken)
+            localStorage.setItem('tidal_refresh_token', this.refreshToken);
         }
-        localStorage.setItem('tidal_token_expires', this.tokenExpires.toString())
+        localStorage.setItem('tidal_token_expires', this.tokenExpires.toString());
     }
 
     // Clear stored tokens
     private clearTokens(): void {
-        if (typeof window === 'undefined') return
+        if (typeof window === 'undefined') return;
 
-        this.accessToken = null
-        this.refreshToken = null
-        this.tokenExpires = null
-        this.currentUser = null
+        this.accessToken = null;
+        this.refreshToken = null;
+        this.tokenExpires = null;
+        this.currentUser = null;
 
-        localStorage.removeItem('tidal_access_token')
-        localStorage.removeItem('tidal_refresh_token')
-        localStorage.removeItem('tidal_token_expires')
-        localStorage.removeItem('tidal_user')
-        sessionStorage.removeItem('tidal_auth_state')
+        localStorage.removeItem('tidal_access_token');
+        localStorage.removeItem('tidal_refresh_token');
+        localStorage.removeItem('tidal_token_expires');
+        localStorage.removeItem('tidal_user');
+        sessionStorage.removeItem('tidal_auth_state');
+        sessionStorage.removeItem('tidal_code_verifier');
     }
 
     // Check if user is authenticated
     isAuthenticated(): boolean {
-        return !!(this.accessToken && this.tokenExpires && Date.now() < this.tokenExpires)
+        return !!(this.accessToken && this.tokenExpires && Date.now() < this.tokenExpires);
     }
 
     // Get current user info
     getCurrentUser(): TidalUser | null {
-        return this.currentUser
+        return this.currentUser;
     }
 
     // Step 1: Redirect to Tidal OAuth
     async redirectToTidalLogin(): Promise<void> {
         if (!TIDAL_CLIENT_ID) {
-            throw new Error('Tidal Client ID is not configured.')
+            throw new Error('Tidal Client ID is not configured.');
         }
 
-        const state = generateRandomString(16)
-        const codeVerifier = generateCodeVerifier()
-        const codeChallenge = await generateCodeChallenge(codeVerifier)
+        const state = generateRandomString(16);
+        const codeVerifier = generateCodeVerifier();
+        const codeChallenge = await generateCodeChallenge(codeVerifier);
 
-        // Store state for verification
         if (typeof window !== 'undefined') {
-            localStorage.setItem('tidal_auth_state', state)
-            localStorage.setItem('tidal_code_verifier', codeVerifier)
-            // Also store in sessionStorage as backup
-            sessionStorage.setItem('tidal_auth_state', state)
-            sessionStorage.setItem('tidal_code_verifier', codeVerifier)
+            localStorage.setItem('tidal_auth_state', state);
+            localStorage.setItem('tidal_code_verifier', codeVerifier);
+            sessionStorage.setItem('tidal_auth_state', state);
+            sessionStorage.setItem('tidal_code_verifier', codeVerifier);
         }
-
-        console.log('TIDAL_REDIRECT_URI being used:', TIDAL_REDIRECT_URI);
-        console.log('Code verifier length:', codeVerifier.length)
-        console.log('Code challenge:', codeChallenge)
-
 
         const params = new URLSearchParams({
             response_type: 'code',
@@ -164,704 +158,199 @@ export class TidalIntegration {
             scope: TIDAL_SCOPES,
             state: state,
             code_challenge_method: 'S256',
-            code_challenge: codeChallenge
-        })
+            code_challenge: codeChallenge,
+        });
 
-        const authUrl = `https://login.tidal.com/authorize?${params.toString()}`
-        console.log('Redirecting to Tidal OAuth:', authUrl)
-
-        window.location.href = authUrl
+        const authUrl = `${TIDAL_AUTH_BASE}/authorize?${params.toString()}`;
+        window.location.href = authUrl;
     }
-
-
 
     // Step 2: Handle OAuth callback
     async handleCallback(code: string, state: string): Promise<TidalUser> {
-        console.log('=== TIDAL CALLBACK STARTED ===')
-        console.log('Received parameters:', {
-            code: code ? `${code.substring(0, 20)}...` : 'Missing',
-            state: state || 'Missing'
-        })
-
-        // Verify state - try both localStorage and sessionStorage
-        const storedStateLocal = typeof window !== 'undefined' ? localStorage.getItem('tidal_auth_state') : null
-        const storedStateSession = typeof window !== 'undefined' ? sessionStorage.getItem('tidal_auth_state') : null
-        const storedState = storedStateLocal || storedStateSession
-
+        const storedState = typeof window !== 'undefined' ? (localStorage.getItem('tidal_auth_state') || sessionStorage.getItem('tidal_auth_state')) : null;
         if (state !== storedState) {
-            console.error('State mismatch:', { received: state, stored: storedState })
-            throw new Error('State mismatch - possible CSRF attack')
+            throw new Error('State mismatch - possible CSRF attack');
         }
 
-        // Get code verifier for PKCE
-        const codeVerifierLocal = typeof window !== 'undefined' ? localStorage.getItem('tidal_code_verifier') : null
-        const codeVerifierSession = typeof window !== 'undefined' ? sessionStorage.getItem('tidal_code_verifier') : null
-        const codeVerifier = codeVerifierLocal || codeVerifierSession
-
+        const codeVerifier = typeof window !== 'undefined' ? (localStorage.getItem('tidal_code_verifier') || sessionStorage.getItem('tidal_code_verifier')) : null;
         if (!codeVerifier) {
-            throw new Error('Code verifier not found - PKCE verification failed')
+            throw new Error('Code verifier not found - PKCE verification failed');
         }
 
-        console.log('State and PKCE verified, calling API route...')
-
-        // Use API route for token exchange
         const response = await fetch('/api/tidal/auth', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                code: code,
-                redirectUri: TIDAL_REDIRECT_URI,
-                codeVerifier: codeVerifier,
-            }),
-        })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code, redirectUri: TIDAL_REDIRECT_URI, codeVerifier }),
+        });
 
         if (!response.ok) {
-            const errorData = await response.json()
-            console.error('API route failed:', errorData)
-            throw new Error(`Authentication failed: ${errorData.error}`)
+            const errorData = await response.json();
+            throw new Error(`Authentication failed: ${errorData.error}`);
         }
 
-        const tokenData = await response.json()
-        console.log('Token received, storing...')
+        const tokenData = await response.json();
+        this.storeTokens(tokenData);
 
-        // Store the tokens - THIS SETS this.accessToken
-        this.storeTokens(tokenData)
-
-        // IMPORTANT: Verify the token was stored
-        console.log('Token stored, verifying...')
-        console.log('this.accessToken exists:', !!this.accessToken)
-        console.log('this.accessToken length:', this.accessToken?.length || 0)
-
-        // Clean up stored PKCE data
         if (typeof window !== 'undefined') {
-            localStorage.removeItem('tidal_auth_state')
-            localStorage.removeItem('tidal_code_verifier')
-            sessionStorage.removeItem('tidal_auth_state')
-            sessionStorage.removeItem('tidal_code_verifier')
+            localStorage.removeItem('tidal_auth_state');
+            localStorage.removeItem('tidal_code_verifier');
+            sessionStorage.removeItem('tidal_auth_state');
+            sessionStorage.removeItem('tidal_code_verifier');
         }
 
-        // Get user profile (or create fallback user)
-        const userProfile = await this.getUserProfile()
-
-        // 🚀 NOW RUN DISCOVERY - Token is definitely set at this point
-        console.log('Running endpoint discovery...')
-        await this.discoverWorkingEndpoints()
-
-        console.log('=== TIDAL LOGIN COMPLETE ===')
-        return userProfile
+        const userProfile = await this.getUserProfile();
+        console.log('=== TIDAL LOGIN COMPLETE ===');
+        return userProfile;
     }
 
     // Get user profile from Tidal
     private async getUserProfile(): Promise<TidalUser> {
-        console.log('=== GETTING TIDAL USER PROFILE ===')
-        console.log('Access token available:', !!this.accessToken)
-
+        console.log('=== GETTING TIDAL USER PROFILE ===');
         if (!this.accessToken) {
-            throw new Error('No access token available')
+            throw new Error('No access token available');
         }
-
-        const countryCode = 'US'
-
-        // List of possible user profile endpoints to try
-        const possibleEndpoints = [
-            '/v2/me',
-            '/v1/me',
-            '/v2/user',
-            '/v1/user',
-            '/v2/profile',
-            '/v1/profile',
-            '/v2/account',
-            '/v1/account',
-            '/v2/users/current',
-            '/v1/users/current',
-            '/v2/currentUser',
-            '/v1/currentUser'
-        ]
-
-        for (const endpoint of possibleEndpoints) {
-            try {
-                // Try both with and without countryCode parameter
-                const urlsToTry = [
-                    `${TIDAL_API_BASE}${endpoint}?countryCode=${countryCode}`,
-                    `${TIDAL_API_BASE}${endpoint}`
-                ]
-
-                for (const url of urlsToTry) {
-                    console.log(`Trying endpoint: ${endpoint} with URL: ${url}`)
-
-                    const response = await fetch(url, {
-                        headers: {
-                            'Authorization': `Bearer ${this.accessToken}`,
-                            'Accept': 'application/vnd.tidal.v1+json',
-                        }
-                    })
-
-                    console.log(`Response for ${url}:`, {
-                        status: response.status,
-                        statusText: response.statusText,
-                    })
-
-                    if (response.ok) {
-                        const data = await response.json()
-                        console.log(`SUCCESS with ${url}:`, data)
-
-                        // Try to parse the response
-                        const userData = data.data || data.user || data
-
-                        this.currentUser = {
-                            id: userData.id || userData.userId || userData.attributes?.id || 'unknown',
-                            username: userData.username || userData.attributes?.username || userData.displayName || userData.name || 'Tidal User',
-                            firstName: userData.firstName || userData.attributes?.firstName || userData.first_name,
-                            lastName: userData.lastName || userData.attributes?.lastName || userData.last_name,
-                            email: userData.email || userData.attributes?.email,
-                            countryCode: userData.countryCode || userData.attributes?.countryCode || userData.country || countryCode,
-                        }
-
-                        console.log('Successfully parsed user from endpoint:', endpoint, this.currentUser)
-
-                        // Store user data
-                        if (typeof window !== 'undefined') {
-                            localStorage.setItem('tidal_user', JSON.stringify(this.currentUser))
-                        }
-
-                        return this.currentUser
-                    }
-
-                    const errorText = await response.text()
-                    console.log(`Endpoint ${url} failed:`, response.status, errorText)
-                }
-
-            } catch (error) {
-                console.error(`Error with endpoint ${endpoint}:`, error)
-                continue
-            }
-        }
-
-        // If all endpoints fail, let's try to get user ID from token info or create minimal user
-        console.log('All user profile endpoints failed. Attempting to decode token or create minimal user...')
 
         try {
-            // Try to decode the JWT token to get user info
-            const tokenParts = this.accessToken.split('.')
-            if (tokenParts.length === 3) {
-                const payload = JSON.parse(atob(tokenParts[1]))
-                console.log('Token payload:', payload)
-
-                this.currentUser = {
-                    id: payload.sub || payload.userId || payload.user_id || 'token-user',
-                    username: payload.username || payload.name || 'Tidal User',
-                    firstName: payload.firstName || payload.given_name,
-                    lastName: payload.lastName || payload.family_name,
-                    email: payload.email,
-                    countryCode: payload.country || countryCode,
-                }
-            } else {
-                // Create completely minimal user
-                this.currentUser = {
-                    id: 'minimal-user',
-                    username: 'Tidal User',
-                    firstName: undefined,
-                    lastName: undefined,
-                    email: undefined,
-                    countryCode: countryCode,
-                }
+            const payload = JSON.parse(atob(this.accessToken.split('.')[1]));
+            const userId = payload.uid;
+            if (!userId) {
+                throw new Error('User ID (uid) not found in token payload.');
             }
-        } catch (tokenError) {
-            console.error('Could not decode token:', tokenError)
 
-            // Final fallback - minimal user
+            const url = `${TIDAL_API_BASE}/v1/users/${userId}?countryCode=${payload.countryCode || 'US'}`;
+            const response = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${this.accessToken}` },
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch user profile: ${response.status}`);
+            }
+
+            const userData = await response.json();
             this.currentUser = {
-                id: 'fallback-user',
-                username: 'Tidal User',
-                firstName: undefined,
-                lastName: undefined,
-                email: undefined,
-                countryCode: countryCode,
+                id: userData.id.toString(),
+                username: userData.username,
+                firstName: userData.firstName,
+                lastName: userData.lastName,
+                email: userData.email,
+                countryCode: userData.countryCode,
+            };
+
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('tidal_user', JSON.stringify(this.currentUser));
             }
+            return this.currentUser;
+        } catch (error) {
+            console.error('Could not get user profile, creating fallback.', error);
+            this.currentUser = { id: 'fallback-user', username: 'Tidal User', countryCode: 'US' };
+            return this.currentUser;
         }
-
-        console.log('Created fallback user object:', this.currentUser)
-
-        // Store minimal user data
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('tidal_user', JSON.stringify(this.currentUser))
-        }
-
-        return this.currentUser
     }
 
-    // Search for a track on Tidal
+    // Search for a track on Tidal and return its ID
     async searchTrack(track: SpotifyTrack): Promise<string | null> {
+        if (!this.accessToken) return null;
         try {
-            const query = `${track.artists.map(a => a.name).join(' ')} ${track.name}`
-            const countryCode = this.currentUser?.countryCode || 'US'
+            const query = `${track.name} ${track.artists.map(a => a.name).join(' ')}`;
+            const params = new URLSearchParams({
+                query,
+                type: 'TRACKS',
+                limit: '1',
+                countryCode: this.currentUser?.countryCode || 'US',
+            });
 
-            // Use the correct searchResults endpoint from API docs
-            const searchId = encodeURIComponent(query)
-            const url = `${TIDAL_API_BASE}/v2/searchResults/${searchId}?countryCode=${countryCode}&include=tracks&explicitFilter=include`
+            const response = await fetch(`${TIDAL_API_BASE}/v1/search?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${this.accessToken}` },
+            });
 
-            console.log('Searching for track:', query, 'at URL:', url)
-
-            const response = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Accept': 'application/vnd.tidal.v1+json',
-                }
-            })
-
-            console.log('Track search response:', response.status, response.statusText)
-
-            if (!response.ok) {
-                const errorText = await response.text()
-                console.error('Track search failed:', response.status, errorText)
-                return null
-            }
-
-            const data = await response.json()
-            console.log('Track search response data:', data)
-
-            // Parse the searchResults response structure
-            if (data.tracks?.items && data.tracks.items.length > 0) {
-                const bestMatch = data.tracks.items[0]
-                const trackId = bestMatch.resource?.id || bestMatch.id
-                if (trackId) {
-                    console.log('Found track:', trackId)
-                    return `https://tidal.com/browse/track/${trackId}`
-                }
-            }
-
-            console.log('No tracks found for:', query)
-            return null
-
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data.tracks?.items?.[0]?.id.toString() || null;
         } catch (error) {
-            console.error('Error searching Tidal for track:', error)
-            return null
+            console.error(`Error searching for track "${track.name}":`, error);
+            return null;
         }
     }
 
-    // Search for an album on Tidal
+    // Search for an album on Tidal and return its ID
     async searchAlbum(album: SpotifyAlbum): Promise<string | null> {
+        if (!this.accessToken) return null;
         try {
-            const query = `${album.artists.map(a => a.name).join(' ')} ${album.name}`
-            const countryCode = this.currentUser?.countryCode || 'US'
+            const query = `${album.name} ${album.artists.map(a => a.name).join(' ')}`;
+            const params = new URLSearchParams({
+                query,
+                type: 'ALBUMS',
+                limit: '1',
+                countryCode: this.currentUser?.countryCode || 'US',
+            });
 
-            // Use the correct searchResults endpoint from API docs
-            const searchId = encodeURIComponent(query)
-            const url = `${TIDAL_API_BASE}/v2/searchResults/${searchId}?countryCode=${countryCode}&include=albums&explicitFilter=include`
+            const response = await fetch(`${TIDAL_API_BASE}/v1/search?${params.toString()}`, {
+                headers: { 'Authorization': `Bearer ${this.accessToken}` },
+            });
 
-            console.log('Searching for album:', query, 'at URL:', url)
-
-            const response = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Accept': 'application/vnd.tidal.v1+json',
-                }
-            })
-
-            console.log('Album search response:', response.status, response.statusText)
-
-            if (!response.ok) {
-                const errorText = await response.text()
-                console.error('Album search failed:', response.status, errorText)
-                return null
-            }
-
-            const data = await response.json()
-            console.log('Album search response data:', data)
-
-            // Parse the searchResults response structure
-            if (data.albums?.items && data.albums.items.length > 0) {
-                const bestMatch = data.albums.items[0]
-                const albumId = bestMatch.resource?.id || bestMatch.id
-                if (albumId) {
-                    console.log('Found album:', albumId)
-                    return `https://tidal.com/browse/album/${albumId}`
-                }
-            }
-
-            console.log('No albums found for:', query)
-            return null
-
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data.albums?.items?.[0]?.id.toString() || null;
         } catch (error) {
-            console.error('Error searching Tidal for album:', error)
-            return null
+            console.error(`Error searching for album "${album.name}":`, error);
+            return null;
         }
     }
 
-    // Create a playlist on Tidal
-    async createPlaylist(playlist: SpotifyPlaylist, tracks: SpotifyTrack[]): Promise<string | null> {
+    // Create a playlist and return its ID
+    private async createPlaylist(playlist: SpotifyPlaylist): Promise<string | null> {
+        if (!this.accessToken || !this.currentUser?.id) return null;
         try {
-            const countryCode = this.currentUser?.countryCode || 'US'
-
-            // Use the exact format from API documentation
-            const playlistData = {
-                data: {
-                    attributes: {
-                        accessType: "PUBLIC",  // From API docs - can be PUBLIC or PRIVATE
-                        description: playlist.description || "Transferred from Spotify",
-                        name: playlist.name
-                    },
-                    type: "playlists"
-                }
-            }
-
-            const url = `${TIDAL_API_BASE}/v2/playlists?countryCode=${countryCode}`
-
-            console.log('Creating playlist with URL:', url)
-            console.log('Playlist data:', JSON.stringify(playlistData, null, 2))
-
-            const createResponse = await fetch(url, {
+            const url = `${TIDAL_API_BASE}/v1/users/${this.currentUser.id}/playlists?countryCode=${this.currentUser.countryCode}`;
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.accessToken}`,
-                    'Accept': 'application/vnd.tidal.v1+json',
-                    'Content-Type': 'application/vnd.tidal.v1+json'
+                    'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                body: JSON.stringify(playlistData)
-            })
+                body: new URLSearchParams({
+                    title: playlist.name,
+                    description: playlist.description || "Transferred from Spotify",
+                }),
+            });
 
-            console.log('Playlist creation response:', {
-                status: createResponse.status,
-                statusText: createResponse.statusText,
-                url: createResponse.url
-            })
-
-            if (!createResponse.ok) {
-                const errorText = await createResponse.text()
-                console.error(`Failed to create playlist: ${createResponse.status} - ${errorText}`)
-                return null
+            if (!response.ok) {
+                console.error('Failed to create playlist:', await response.text());
+                return null;
             }
-
-            const createdPlaylist = await createResponse.json()
-            console.log('Created playlist response:', createdPlaylist)
-
-            const playlistId = createdPlaylist.data?.id
-            if (!playlistId) {
-                console.error('No playlist ID in response:', createdPlaylist)
-                return null
-            }
-
-            console.log('Playlist created successfully with ID:', playlistId)
-
-            // Add tracks to the playlist if any exist (with rate limiting)
-            if (tracks.length > 0) {
-                console.log(`Adding ${tracks.length} tracks to playlist...`)
-                await this.addTracksToPlaylistWithRateLimit(playlistId, tracks)
-            }
-
-            return `https://tidal.com/browse/playlist/${playlistId}`
-
+            const createdPlaylist = await response.json();
+            return createdPlaylist.uuid; // The ID is in the 'uuid' field
         } catch (error) {
-            console.error('Error creating Tidal playlist:', error)
-            return null
+            console.error(`Error creating playlist "${playlist.name}":`, error);
+            return null;
         }
     }
 
-    // Add tracks to a playlist
-    private async addTracksToPlaylistWithRateLimit(playlistId: string, tracks: SpotifyTrack[]): Promise<void> {
-        console.log(`Adding ${tracks.length} tracks to playlist ${playlistId}...`)
-
-        // Process tracks in smaller batches to avoid rate limiting
-        const batchSize = 3  // Reduced batch size to be more conservative
-        const trackBatches = []
-
-        for (let i = 0; i < tracks.length; i += batchSize) {
-            trackBatches.push(tracks.slice(i, i + batchSize))
-        }
-
-        for (let batchIndex = 0; batchIndex < trackBatches.length; batchIndex++) {
-            const batch = trackBatches[batchIndex]
-            console.log(`Processing batch ${batchIndex + 1}/${trackBatches.length}...`)
-
-            const tidalTrackIds: string[] = []
-
-            // Search for tracks in this batch
-            for (const track of batch) {
-                try {
-                    const trackUrl = await this.searchTrack(track)
-                    if (trackUrl) {
-                        const trackId = trackUrl.split('/track/')[1]
-                        if (trackId) {
-                            tidalTrackIds.push(trackId)
-                            console.log(`Found track ${track.name} with ID: ${trackId}`)
-                        }
-                    } else {
-                        console.log(`Track not found: ${track.name} by ${track.artists.map(a => a.name).join(', ')}`)
-                    }
-                } catch (error) {
-                    console.error(`Error searching for track ${track.name}:`, error)
-                }
-
-                // Delay between track searches to avoid rate limiting
-                await new Promise(resolve => setTimeout(resolve, 500))
-            }
-
-            if (tidalTrackIds.length === 0) {
-                console.log(`No tracks found in batch ${batchIndex + 1}`)
-                continue
-            }
-
-            // Try to add this batch of tracks
-            console.log(`Adding ${tidalTrackIds.length} tracks from batch ${batchIndex + 1}`)
-            await this.addTrackBatchToPlaylist(playlistId, tidalTrackIds)
-
-            // Delay between batches
-            if (batchIndex < trackBatches.length - 1) {
-                console.log('Waiting 2 seconds before next batch...')
-                await new Promise(resolve => setTimeout(resolve, 2000))
-            }
-        }
-    }
-
-    private async addTrackBatchToPlaylist(playlistId: string, trackIds: string[]): Promise<void> {
-        const countryCode = this.currentUser?.countryCode || 'US'
-
-        // Based on the playlist creation pattern, try this structure
-        const tracksData = {
-            data: trackIds.map(trackId => ({
-                type: 'tracks',
-                id: trackId
-            }))
-        }
-
-        // Try different endpoints for adding tracks to playlists
-        const addTrackEndpoints = [
-            `/v2/playlists/${playlistId}/items?countryCode=${countryCode}`,
-            `/v2/playlists/${playlistId}/tracks?countryCode=${countryCode}`,
-            `/v2/playlists/${playlistId}/relationships/items?countryCode=${countryCode}`,
-            `/v1/playlists/${playlistId}/tracks?countryCode=${countryCode}`
-        ]
-
-        for (const endpoint of addTrackEndpoints) {
-            try {
-                const url = `${TIDAL_API_BASE}${endpoint}`
-                console.log(`Trying to add ${trackIds.length} tracks with endpoint:`, url)
-                console.log('Track data:', JSON.stringify(tracksData, null, 2))
-
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${this.accessToken}`,
-                        'Accept': 'application/vnd.tidal.v1+json',
-                        'Content-Type': 'application/vnd.tidal.v1+json'
-                    },
-                    body: JSON.stringify(tracksData)
-                })
-
-                console.log(`Add tracks response for ${endpoint}:`, response.status, response.statusText)
-
-                if (response.ok) {
-                    console.log(`✅ Successfully added ${trackIds.length} tracks with endpoint:`, endpoint)
-                    return
-                } else {
-                    const errorText = await response.text()
-                    console.log(`❌ Add tracks endpoint ${endpoint} failed:`, response.status, errorText)
-
-                    if (response.status === 429) {
-                        console.log('Rate limited, waiting 3 seconds...')
-                        await new Promise(resolve => setTimeout(resolve, 3000))
-                    }
-                }
-
-            } catch (error) {
-                console.error(`Error with add tracks endpoint ${endpoint}:`, error)
-                continue
-            }
-        }
-
-        console.log(`⚠️  Failed to add tracks to playlist ${playlistId} with any endpoint`)
-    }
-
-    async discoverWorkingEndpoints(): Promise<void> {
-        console.log('🚀 DISCOVERING WORKING TIDAL API ENDPOINTS...')
-
-        // More thorough access token check
-        console.log('Checking access token availability...')
-        console.log('this.accessToken exists:', !!this.accessToken)
-        console.log('this.accessToken length:', this.accessToken?.length || 0)
-
-        if (!this.accessToken || this.accessToken.length === 0) {
-            console.error('❌ No access token available for discovery')
-            console.log('Available properties:', Object.keys(this))
-            return
-        }
-
-        console.log('✅ Access token confirmed, starting discovery...')
-        console.log('Token preview:', this.accessToken.substring(0, 20) + '...')
-        console.log('='.repeat(80))
-
-        // Test endpoint helper
-        const testEndpoint = async (endpoint: string, method: 'GET' | 'POST' = 'GET', body?: object) => {
-            try {
-                const options: RequestInit = {
-                    method,
-                    headers: {
-                        'Authorization': `Bearer ${this.accessToken}`,
-                        'Accept': 'application/vnd.tidal.v1+json',
-                    }
-                }
-
-                if (method === 'POST' && body) {
-                    options.headers = {
-                        ...options.headers,
-                        'Content-Type': 'application/vnd.tidal.v1+json'
-                    }
-                    options.body = JSON.stringify(body)
-                }
-
-                console.log(`Testing: ${method} ${TIDAL_API_BASE}${endpoint}`)
-                const response = await fetch(`${TIDAL_API_BASE}${endpoint}`, options)
-                const responseText = await response.text()
-
-                let data = null
-                try {
-                    data = JSON.parse(responseText)
-                } catch (e) {
-                    data = responseText
-                }
-
-                return {
-                    endpoint,
-                    status: response.status,
-                    success: response.ok,
-                    data: response.ok ? data : undefined,
-                    error: !response.ok ? responseText : undefined
-                }
-            } catch (error) {
-                return {
-                    endpoint,
-                    status: 0,
-                    success: false,
-                    error: error instanceof Error ? error.message : String(error)
-                }
-            }
-        }
-
-        // 1. DISCOVER SEARCH ENDPOINTS
-        console.log('🔍 TESTING SEARCH ENDPOINTS...')
-        const searchEndpoints = [
-            '/v1/search?q=coldplay&countryCode=US',
-            '/v2/search?q=coldplay&countryCode=US',
-            '/v1/search?query=coldplay&countryCode=US',
-            '/v2/search?query=coldplay&countryCode=US',
-            '/v1/search?q=coldplay&type=tracks&countryCode=US',
-            '/v2/search?q=coldplay&type=tracks&countryCode=US',
-            '/v1/search/tracks?q=coldplay&countryCode=US',
-            '/v2/search/tracks?q=coldplay&countryCode=US',
-            '/v1/catalog/search?q=coldplay&countryCode=US',
-            '/v2/catalog/search?q=coldplay&countryCode=US',
-            '/v1/browse/search?q=coldplay&countryCode=US',
-            '/v2/browse/search?q=coldplay&countryCode=US'
-        ]
-
-        for (const endpoint of searchEndpoints) {
-            const result = await testEndpoint(endpoint)
-            if (result.success) {
-                console.log('✅ WORKING SEARCH:', endpoint)
-                console.log('   Sample response keys:', Object.keys(result.data || {}))
-                if (result.data?.tracks) {
-                    console.log('   🎵 Has tracks data!')
-                }
-                if (result.data?.albums) {
-                    console.log('   💿 Has albums data!')
-                }
-            } else if (result.status === 404) {
-                console.log('❌ 404:', endpoint)
-            } else if (result.status === 429) {
-                console.log('⚠️  Rate limited:', endpoint)
-                await new Promise(resolve => setTimeout(resolve, 2000))
-            } else {
-                console.log(`❌ ${result.status}:`, endpoint)
-            }
-            await new Promise(resolve => setTimeout(resolve, 300))
-        }
-
-        console.log('\n' + '='.repeat(80) + '\n')
-
-        // 2. DISCOVER PLAYLIST ENDPOINTS
-        console.log('🎵 TESTING PLAYLIST CREATION ENDPOINTS...')
-        const playlistEndpoints = [
-            '/v1/playlists?countryCode=US',
-            '/v2/playlists?countryCode=US',
-            '/v1/me/playlists?countryCode=US',
-            '/v2/me/playlists?countryCode=US',
-            '/v1/my/playlists?countryCode=US',
-            '/v2/my/playlists?countryCode=US',
-            '/v1/user/playlists?countryCode=US',
-            '/v2/user/playlists?countryCode=US',
-            '/v1/users/me/playlists?countryCode=US',
-            '/v2/users/me/playlists?countryCode=US'
-        ]
-
-        const testPlaylistData = {
-            data: {
-                attributes: {
-                    accessType: "PRIVATE",
-                    description: "API Discovery Test",
-                    name: "Test Playlist " + Date.now()
+    // Add a batch of tracks to a playlist
+    private async addTracksToPlaylist(playlistId: string, trackIds: string[]): Promise<void> {
+        if (!this.accessToken || trackIds.length === 0) return;
+        try {
+            const url = `${TIDAL_API_BASE}/v1/playlists/${playlistId}/items?countryCode=${this.currentUser?.countryCode || 'US'}`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Content-Type': 'application/x-www-form-urlencoded',
                 },
-                type: "playlists"
-            }
-        }
+                body: new URLSearchParams({
+                    trackIds: trackIds.join(','),
+                    onDupes: 'FAIL',
+                }),
+            });
 
-        for (const endpoint of playlistEndpoints) {
-            const result = await testEndpoint(endpoint, 'POST', testPlaylistData)
-            if (result.success) {
-                console.log('✅ WORKING PLAYLIST CREATE:', endpoint)
-                console.log('   Response:', result.data)
-                console.log('   🎯 PLAYLIST CREATION WORKS!')
-            } else if (result.status === 404) {
-                console.log('❌ 404:', endpoint)
-            } else if (result.status === 429) {
-                console.log('⚠️  Rate limited:', endpoint)
-                await new Promise(resolve => setTimeout(resolve, 2000))
+            if (response.ok) {
+                console.log(`✅ Successfully added ${trackIds.length} tracks to playlist ${playlistId}`);
             } else {
-                console.log(`❌ ${result.status}:`, endpoint)
+                console.error(`❌ Failed to add tracks to playlist ${playlistId}:`, await response.text());
             }
-            await new Promise(resolve => setTimeout(resolve, 500))
+        } catch (error) {
+            console.error('Error adding tracks to playlist:', error);
         }
-
-        console.log('\n' + '='.repeat(80) + '\n')
-
-        // 3. DISCOVER USER ENDPOINTS (that we haven't tried)
-        console.log('👤 TESTING USER PROFILE ENDPOINTS...')
-        const userEndpoints = [
-            '/v1/me?countryCode=US',
-            '/v2/me?countryCode=US',
-            '/v1/user?countryCode=US',
-            '/v2/user?countryCode=US',
-            '/v1/profile?countryCode=US',
-            '/v2/profile?countryCode=US',
-            '/v1/account?countryCode=US',
-            '/v2/account?countryCode=US',
-            '/v1/me',
-            '/v2/me',
-            '/v1/user',
-            '/v2/user'
-        ]
-
-        for (const endpoint of userEndpoints) {
-            const result = await testEndpoint(endpoint)
-            if (result.success) {
-                console.log('✅ WORKING USER:', endpoint)
-                console.log('   User data keys:', Object.keys(result.data || {}))
-            } else if (result.status === 404) {
-                console.log('❌ 404:', endpoint)
-            } else if (result.status === 429) {
-                console.log('⚠️  Rate limited:', endpoint)
-                await new Promise(resolve => setTimeout(resolve, 2000))
-            } else {
-                console.log(`❌ ${result.status}:`, endpoint)
-            }
-            await new Promise(resolve => setTimeout(resolve, 300))
-        }
-
-        console.log('\n' + '='.repeat(80) + '\n')
-        console.log('✅ ENDPOINT DISCOVERY COMPLETE!')
-        console.log('Look for ✅ WORKING entries above to find functional endpoints')
-        console.log('='.repeat(80))
     }
 
     // Main transfer function
@@ -871,105 +360,104 @@ export class TidalIntegration {
         selectedPlaylists: SpotifyPlaylist[],
         onProgress: (progress: number, status: string) => void
     ): Promise<{
-        success: boolean
+        success: boolean;
         results: {
-            tracks: Array<{ original: SpotifyTrack, tidalUrl: string | null }>
-            albums: Array<{ original: SpotifyAlbum, tidalUrl: string | null }>
-            playlists: Array<{ original: SpotifyPlaylist, tidalUrl: string | null }>
-        }
-        errors: string[]
+            tracks: Array<{ original: SpotifyTrack; tidalUrl: string | null }>;
+            albums: Array<{ original: SpotifyAlbum; tidalUrl: string | null }>;
+            playlists: Array<{ original: SpotifyPlaylist; tidalUrl: string | null }>;
+        };
+        errors: string[];
     }> {
         if (!this.isAuthenticated()) {
-            throw new Error('Not authenticated with Tidal. Please log in first.')
+            throw new Error('Not authenticated with Tidal. Please log in first.');
         }
 
-        const results = {
-            tracks: [] as Array<{ original: SpotifyTrack, tidalUrl: string | null }>,
-            albums: [] as Array<{ original: SpotifyAlbum, tidalUrl: string | null }>,
-            playlists: [] as Array<{ original: SpotifyPlaylist, tidalUrl: string | null }>
-        }
-        const errors: string[] = []
+        const results: {
+            tracks: Array<{ original: SpotifyTrack; tidalUrl: string | null }>;
+            albums: Array<{ original: SpotifyAlbum; tidalUrl: string | null }>;
+            playlists: Array<{ original: SpotifyPlaylist; tidalUrl: string | null }>;
+        } = { tracks: [], albums: [], playlists: [] };
+        const errors: string[] = [];
+        const totalItems = selectedTracks.length + selectedAlbums.length + selectedPlaylists.length;
+        let processedItems = 0;
 
-        const totalItems = selectedTracks.length + selectedAlbums.length + selectedPlaylists.length
-        let processedItems = 0
+        const updateProgress = (status: string) => {
+            processedItems++;
+            onProgress(Math.round((processedItems / totalItems) * 100), status);
+        };
 
-        onProgress(0, 'Starting Tidal transfer...')
+        onProgress(0, 'Starting Tidal transfer...');
 
-        // Transfer tracks
         for (const track of selectedTracks) {
+            const status = `Searching for track: ${track.name}`;
             try {
-                onProgress(
-                    Math.round((processedItems / totalItems) * 100),
-                    `Searching for: ${track.name}`
-                )
-
-                const tidalUrl = await this.searchTrack(track)
-                results.tracks.push({ original: track, tidalUrl })
-
-                if (!tidalUrl) {
-                    errors.push(`Track not found: ${track.name}`)
-                }
+                const trackId = await this.searchTrack(track);
+                const tidalUrl = trackId ? `https://tidal.com/browse/track/${trackId}` : null;
+                results.tracks.push({ original: track, tidalUrl });
+                if (!tidalUrl) errors.push(`Track not found: ${track.name}`);
             } catch (error) {
-                errors.push(`Error processing track: ${track.name}`)
+                errors.push(`Error processing track: ${track.name}`);
             }
-            processedItems++
+            updateProgress(status);
+            await new Promise(resolve => setTimeout(resolve, 300)); // Rate limiting
         }
 
-        // Transfer albums
         for (const album of selectedAlbums) {
+            const status = `Searching for album: ${album.name}`;
             try {
-                onProgress(
-                    Math.round((processedItems / totalItems) * 100),
-                    `Searching for: ${album.name}`
-                )
-
-                const tidalUrl = await this.searchAlbum(album)
-                results.albums.push({ original: album, tidalUrl })
-
-                if (!tidalUrl) {
-                    errors.push(`Album not found: ${album.name}`)
-                }
+                const albumId = await this.searchAlbum(album);
+                const tidalUrl = albumId ? `https://tidal.com/browse/album/${albumId}` : null;
+                results.albums.push({ original: album, tidalUrl });
+                if (!tidalUrl) errors.push(`Album not found: ${album.name}`);
             } catch (error) {
-                errors.push(`Error processing album: ${album.name}`)
+                errors.push(`Error processing album: ${album.name}`);
             }
-            processedItems++
+            updateProgress(status);
+            await new Promise(resolve => setTimeout(resolve, 300)); // Rate limiting
         }
 
-        // Transfer playlists
         for (const playlist of selectedPlaylists) {
+            const status = `Creating playlist: ${playlist.name}`;
             try {
-                onProgress(
-                    Math.round((processedItems / totalItems) * 100),
-                    `Creating playlist: ${playlist.name}`
-                )
+                const newPlaylistId = await this.createPlaylist(playlist);
+                if (newPlaylistId) {
+                    const tracksToFind = playlist.tracks || [];
+                    const foundTrackIds: string[] = [];
 
-                const playlistTracks = playlist.tracks || []
-                const tidalUrl = await this.createPlaylist(playlist, playlistTracks)
-                results.playlists.push({ original: playlist, tidalUrl })
+                    for (const track of tracksToFind) {
+                        const trackId = await this.searchTrack(track);
+                        if (trackId) foundTrackIds.push(trackId);
+                        await new Promise(resolve => setTimeout(resolve, 300)); // Rate limiting
+                    }
 
-                if (!tidalUrl) {
-                    errors.push(`Failed to create playlist: ${playlist.name}`)
+                    if (foundTrackIds.length > 0) {
+                        // Add tracks in batches of 50
+                        for (let i = 0; i < foundTrackIds.length; i += 50) {
+                            const batch = foundTrackIds.slice(i, i + 50);
+                            await this.addTracksToPlaylist(newPlaylistId, batch);
+                            await new Promise(resolve => setTimeout(resolve, 1000)); // Rate limiting between batches
+                        }
+                    }
+                    results.playlists.push({ original: playlist, tidalUrl: `https://tidal.com/browse/playlist/${newPlaylistId}` });
+                } else {
+                    errors.push(`Failed to create playlist: ${playlist.name}`);
+                    results.playlists.push({ original: playlist, tidalUrl: null });
                 }
             } catch (error) {
-                errors.push(`Error processing playlist: ${playlist.name}`)
+                errors.push(`Error processing playlist: ${playlist.name}`);
             }
-            processedItems++
+            updateProgress(status);
         }
 
-        onProgress(100, 'Transfer complete!')
-
-        return {
-            success: errors.length === 0,
-            results,
-            errors
-        }
+        onProgress(100, 'Transfer complete!');
+        return { success: errors.length === 0, results, errors };
     }
 
     // Logout
     logout(): void {
-        this.clearTokens()
+        this.clearTokens();
     }
 }
 
 // Export singleton instance
-export const tidalIntegration = new TidalIntegration()
+export const tidalIntegration = new TidalIntegration();
