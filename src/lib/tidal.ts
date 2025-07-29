@@ -279,10 +279,13 @@ export class TidalIntegration {
         }
 
         try {
-            // Use the correct endpoint from Tidal API docs: /users/me
-            console.log('Using correct Tidal API endpoint: /v2/users/me')
+            // Use the correct endpoint with REQUIRED countryCode parameter
+            const countryCode = 'US' // Default to US, should ideally get from user location
+            const url = `${TIDAL_API_BASE}/v2/users/me?countryCode=${countryCode}`
 
-            const response = await fetch(`${TIDAL_API_BASE}/v2/users/me`, {
+            console.log('Making request to:', url)
+
+            const response = await fetch(url, {
                 headers: {
                     'Authorization': `Bearer ${this.accessToken}`,
                     'Accept': 'application/vnd.tidal.v1+json',
@@ -292,6 +295,7 @@ export class TidalIntegration {
             console.log('User profile response:', {
                 status: response.status,
                 statusText: response.statusText,
+                url: response.url,
                 headers: Object.fromEntries(response.headers.entries())
             })
 
@@ -300,7 +304,8 @@ export class TidalIntegration {
                 console.error('User profile request failed:', {
                     status: response.status,
                     statusText: response.statusText,
-                    body: errorText
+                    body: errorText,
+                    url: url
                 })
                 throw new Error(`Failed to get user profile: ${response.status} - ${errorText}`)
             }
@@ -317,7 +322,7 @@ export class TidalIntegration {
                 firstName: userData.attributes?.firstName || userData.firstName,
                 lastName: userData.attributes?.lastName || userData.lastName,
                 email: userData.attributes?.email || userData.email,
-                countryCode: userData.attributes?.countryCode || userData.countryCode || 'US',
+                countryCode: userData.attributes?.countryCode || userData.countryCode || countryCode,
             }
 
             console.log('Successfully parsed user data:', this.currentUser)
@@ -339,24 +344,31 @@ export class TidalIntegration {
     async searchTrack(track: SpotifyTrack): Promise<string | null> {
         try {
             const query = `${track.artists.map(a => a.name).join(' ')} ${track.name}`
+            const countryCode = this.currentUser?.countryCode || 'US'
 
-            const response = await fetch(
-                `${TIDAL_API_BASE}/v2/searchresults/tracks?query=${encodeURIComponent(query)}&countryCode=${this.currentUser?.countryCode || 'US'}&limit=5`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.accessToken}`,
-                        'Accept': 'application/vnd.tidal.v1+json',
-                    }
+            const url = `${TIDAL_API_BASE}/v2/searchresults/tracks?query=${encodeURIComponent(query)}&countryCode=${countryCode}&limit=5`
+
+            console.log('Searching for track:', query, 'at URL:', url)
+
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Accept': 'application/vnd.tidal.v1+json',
                 }
-            )
+            })
 
-            if (!response.ok) return null
+            if (!response.ok) {
+                console.error('Track search failed:', response.status, response.statusText)
+                return null
+            }
 
             const data = await response.json()
+            console.log('Track search response:', data)
 
             if (data.tracks?.items && data.tracks.items.length > 0) {
                 const bestMatch = data.tracks.items[0]
-                return `https://tidal.com/browse/track/${bestMatch.resource.id}`
+                const trackId = bestMatch.resource?.id || bestMatch.id
+                return `https://tidal.com/browse/track/${trackId}`
             }
 
             return null
@@ -370,24 +382,31 @@ export class TidalIntegration {
     async searchAlbum(album: SpotifyAlbum): Promise<string | null> {
         try {
             const query = `${album.artists.map(a => a.name).join(' ')} ${album.name}`
+            const countryCode = this.currentUser?.countryCode || 'US'
 
-            const response = await fetch(
-                `${TIDAL_API_BASE}/v2/searchresults/albums?query=${encodeURIComponent(query)}&countryCode=${this.currentUser?.countryCode || 'US'}&limit=5`,
-                {
-                    headers: {
-                        'Authorization': `Bearer ${this.accessToken}`,
-                        'Accept': 'application/vnd.tidal.v1+json',
-                    }
+            const url = `${TIDAL_API_BASE}/v2/searchresults/albums?query=${encodeURIComponent(query)}&countryCode=${countryCode}&limit=5`
+
+            console.log('Searching for album:', query, 'at URL:', url)
+
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Accept': 'application/vnd.tidal.v1+json',
                 }
-            )
+            })
 
-            if (!response.ok) return null
+            if (!response.ok) {
+                console.error('Album search failed:', response.status, response.statusText)
+                return null
+            }
 
             const data = await response.json()
+            console.log('Album search response:', data)
 
             if (data.albums?.items && data.albums.items.length > 0) {
                 const bestMatch = data.albums.items[0]
-                return `https://tidal.com/browse/album/${bestMatch.resource.id}`
+                const albumId = bestMatch.resource?.id || bestMatch.id
+                return `https://tidal.com/browse/album/${albumId}`
             }
 
             return null
@@ -400,19 +419,23 @@ export class TidalIntegration {
     // Create a playlist on Tidal
     async createPlaylist(playlist: SpotifyPlaylist, tracks: SpotifyTrack[]): Promise<string | null> {
         try {
-            // Create the playlist
+            const countryCode = this.currentUser?.countryCode || 'US'
+
+            // Create the playlist with proper JSON structure from API docs
             const playlistData = {
                 data: {
                     type: 'playlists',
                     attributes: {
                         title: playlist.name,
                         description: playlist.description || `Transferred from Spotify`,
-                        public: false
+                        accessType: 'PRIVATE'  // Based on API docs, use accessType instead of public
                     }
                 }
             }
 
-            const createResponse = await fetch(`${TIDAL_API_BASE}/v2/playlists`, {
+            console.log('Creating playlist with data:', playlistData)
+
+            const createResponse = await fetch(`${TIDAL_API_BASE}/v2/playlists?countryCode=${countryCode}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${this.accessToken}`,
@@ -422,13 +445,26 @@ export class TidalIntegration {
                 body: JSON.stringify(playlistData)
             })
 
+            console.log('Playlist creation response:', {
+                status: createResponse.status,
+                statusText: createResponse.statusText,
+                url: createResponse.url
+            })
+
             if (!createResponse.ok) {
-                console.error(`Failed to create playlist: ${createResponse.status}`)
+                const errorText = await createResponse.text()
+                console.error(`Failed to create playlist: ${createResponse.status} - ${errorText}`)
                 return null
             }
 
             const createdPlaylist = await createResponse.json()
-            const playlistId = createdPlaylist.data.id
+            console.log('Created playlist response:', createdPlaylist)
+
+            const playlistId = createdPlaylist.data?.id
+            if (!playlistId) {
+                console.error('No playlist ID in response')
+                return null
+            }
 
             // Add tracks to the playlist if any exist
             if (tracks.length > 0) {
@@ -445,6 +481,7 @@ export class TidalIntegration {
     // Add tracks to a playlist
     private async addTracksToPlaylist(playlistId: string, tracks: SpotifyTrack[]): Promise<void> {
         const tidalTrackIds: string[] = []
+        const countryCode = this.currentUser?.countryCode || 'US'
 
         // Search for tracks on Tidal
         for (const track of tracks) {
@@ -459,9 +496,12 @@ export class TidalIntegration {
             await new Promise(resolve => setTimeout(resolve, 100))
         }
 
-        if (tidalTrackIds.length === 0) return
+        if (tidalTrackIds.length === 0) {
+            console.log('No tracks found to add to playlist')
+            return
+        }
 
-        // Add tracks to playlist
+        // Add tracks to playlist with proper JSON structure
         const tracksData = {
             data: tidalTrackIds.map(trackId => ({
                 type: 'tracks',
@@ -469,7 +509,9 @@ export class TidalIntegration {
             }))
         }
 
-        await fetch(`${TIDAL_API_BASE}/v2/playlists/${playlistId}/relationships/items`, {
+        console.log('Adding tracks to playlist:', tracksData)
+
+        const response = await fetch(`${TIDAL_API_BASE}/v2/playlists/${playlistId}/relationships/items?countryCode=${countryCode}`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${this.accessToken}`,
@@ -478,6 +520,13 @@ export class TidalIntegration {
             },
             body: JSON.stringify(tracksData)
         })
+
+        if (!response.ok) {
+            const errorText = await response.text()
+            console.error(`Failed to add tracks to playlist: ${response.status} - ${errorText}`)
+        } else {
+            console.log(`Successfully added ${tidalTrackIds.length} tracks to playlist`)
+        }
     }
 
     // Main transfer function
