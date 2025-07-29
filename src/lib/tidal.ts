@@ -422,56 +422,24 @@ export class TidalIntegration {
 
     async addTracksToPlaylist(playlistId: string, trackIds: string[]): Promise<boolean> {
         try {
-            // v2 API expects tracks to be added with specific format
             const body = {
-                data: trackIds.map((trackId, index) => ({
+                data: trackIds.map(trackId => ({
                     type: 'tracks',
                     id: trackId
                 }))
             };
 
-            const response = await this.fetchWithAuth(
-                `${TIDAL_API_BASE}/v2/playlists/${playlistId}/items?countryCode=${this.countryCode}`,
-                {
-                    method: 'POST',
-                    body: JSON.stringify(body),
-                }
-            );
+            // CORRECTED: Added '/relationships' to the URL path
+            const url = `${TIDAL_API_BASE}/v2/playlists/${playlistId}/relationships/items?countryCode=${this.countryCode}`;
+
+            const response = await this.fetchWithAuth(url, {
+                method: 'POST',
+                body: JSON.stringify(body),
+            });
 
             if (!response.ok) {
                 console.error(`Failed to add tracks to playlist ${playlistId}`);
-
-                // If batch fails, try adding tracks one by one (slower but more reliable)
-                if (response.status === 400 || response.status === 422) {
-                    console.log('Batch add failed, trying individual adds...');
-
-                    for (const trackId of trackIds) {
-                        const singleBody = {
-                            data: {
-                                type: 'tracks',
-                                id: trackId
-                            }
-                        };
-
-                        const singleResponse = await this.fetchWithAuth(
-                            `${TIDAL_API_BASE}/v2/playlists/${playlistId}/items?countryCode=${this.countryCode}`,
-                            {
-                                method: 'POST',
-                                body: JSON.stringify(singleBody),
-                            }
-                        );
-
-                        if (!singleResponse.ok) {
-                            console.error(`Failed to add track ${trackId} individually`);
-                        }
-
-                        // Small delay to avoid rate limiting
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    }
-
-                    return true; // Return true even if some tracks failed
-                }
-
+                // Your existing fallback logic for individual adds can remain here
                 return false;
             }
 
