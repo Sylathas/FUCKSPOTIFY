@@ -165,19 +165,22 @@ export class TidalIntegration {
     }
 
     async getUserProfile(): Promise<TidalUser> {
-        const response = await this.fetchWithAuth(`${this.apiBase}/v2/me`);
+        if (!this.accessToken) throw new Error('No access token');
+        const payload = JSON.parse(atob(this.accessToken.split('.')[1]));
+        const userId = payload.uid; // The User ID is in the 'uid' claim of the token
+        if (!userId) throw new Error('Could not find user ID in token');
+
+        const response = await this.fetchWithAuth(`${this.apiBase}/v1/users/${userId}?countryCode=US`);
         if (!response.ok) throw new Error('Failed to fetch user profile');
-        const { data } = await response.json();
+
+        const userData = await response.json();
         this.currentUser = {
-            id: data.id,
-            username: data.attributes.email, // Official API uses email as username
-            email: data.attributes.email,
-            countryCode: data.attributes.countryCode,
+            id: userData.id.toString(), username: userData.username, email: userData.email,
+            countryCode: userData.countryCode, firstName: userData.firstName, lastName: userData.lastName,
         };
         if (typeof window !== 'undefined') localStorage.setItem('tidal_user', JSON.stringify(this.currentUser));
         return this.currentUser;
     }
-
     async searchTrack(track: SpotifyTrack): Promise<string | null> {
         const query = `${track.name} ${track.artists.map(a => a.name).join(' ')}`;
         const params = new URLSearchParams({ q: query, type: 'TRACK' });
