@@ -7,7 +7,7 @@ const TIDAL_REDIRECT_URI = process.env.NEXT_PUBLIC_TIDAL_REDIRECT_URI ||
 
 const TIDAL_API_BASE = 'https://api.tidal.com'
 const TIDAL_AUTH_BASE = 'https://login.tidal.com'
-const TIDAL_TOKEN_BASE = 'https://auth.tidal.com'
+const TIDAL_TOKEN_BASE = 'https://openapi.tidal.com'
 
 // Required scopes for playlist creation and management
 const TIDAL_SCOPES = [

@@ -1,8 +1,7 @@
-// src/app/api/tidal/auth/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 
-// The client ID should be read from environment variables
-const TIDAL_CLIENT_ID = process.env.NEXT_PUBLIC_TIDAL_CLIENT_ID;
+// Use the new, server-side-only environment variable name
+const TIDAL_CLIENT_ID = process.env.TIDAL_CLIENT_ID;
 const TIDAL_TOKEN_URL = 'https://auth.tidal.com/token';
 
 export async function POST(request: NextRequest) {
@@ -11,7 +10,7 @@ export async function POST(request: NextRequest) {
 
         if (!code || !redirectUri || !codeVerifier) {
             return NextResponse.json(
-                { error: 'Missing required parameters: code, redirectUri, or codeVerifier' },
+                { error: 'Missing required parameters' },
                 { status: 400 }
             );
         }
@@ -26,7 +25,7 @@ export async function POST(request: NextRequest) {
 
         const requestBody = new URLSearchParams({
             grant_type: 'authorization_code',
-            client_id: TIDAL_CLIENT_ID, // Use the one from your .env file
+            client_id: TIDAL_CLIENT_ID, // This now correctly uses the server-side variable
             code: code,
             redirect_uri: redirectUri,
             code_verifier: codeVerifier,
@@ -53,7 +52,6 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Forward the successful response to the client
         return NextResponse.json(tokenData);
 
     } catch (error) {
