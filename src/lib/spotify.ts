@@ -106,6 +106,8 @@ export class SpotifyAuth {
         image?: string;
         followers?: number;
     }> {
+        console.log('=== SPOTIFY CALLBACK STARTED ===')
+
         // Verify state matches
         const storedState = getState()
         if (state !== storedState) {
@@ -114,57 +116,84 @@ export class SpotifyAuth {
 
         const codeVerifier = sessionStorage.getItem('code_verifier')
         if (!codeVerifier) {
-            throw new Error('Code verifier not found')
+            throw new Error('Code verifier not found - please try logging in again')
         }
 
-        // Exchange authorization code for access token using PKCE (NO CLIENT SECRET)
-        const response = await fetch('https://accounts.spotify.com/api/token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                grant_type: 'authorization_code',
-                code: code,
-                redirect_uri: REDIRECT_URI,
-                client_id: CLIENT_ID,
-                code_verifier: codeVerifier,
-                // NO CLIENT SECRET - PKCE handles security
-            }),
-        })
+        console.log('State and code verifier verified, exchanging code for token...')
 
-        if (!response.ok) {
-            const errorText = await response.text()
-            console.error('Spotify token exchange failed:', errorText)
-            throw new Error(`Failed to exchange code for token: ${response.status}`)
-        }
+        try {
+            // Exchange authorization code for access token using PKCE
+            const response = await fetch('https://accounts.spotify.com/api/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    grant_type: 'authorization_code',
+                    code: code,
+                    redirect_uri: REDIRECT_URI,
+                    client_id: CLIENT_ID,
+                    code_verifier: codeVerifier,
+                }),
+            })
 
-        const tokenData = await response.json()
+            const responseText = await response.text()
+            console.log('Token exchange response:', {
+                status: response.status,
+                statusText: response.statusText,
+                bodyPreview: responseText.substring(0, 100) + '...'
+            })
 
-        // Store tokens
-        localStorage.setItem('spotify_access_token', tokenData.access_token)
-        localStorage.setItem('spotify_refresh_token', tokenData.refresh_token)
-        localStorage.setItem('spotify_token_expires',
-            (Date.now() + tokenData.expires_in * 1000).toString()
-        )
+            if (!response.ok) {
+                let errorDetails = responseText
+                try {
+                    const errorData = JSON.parse(responseText)
+                    errorDetails = errorData.error_description || errorData.error || responseText
+                } catch (e) {
+                    // Use raw response if not JSON
+                }
+                throw new Error(`Token exchange failed (${response.status}): ${errorDetails}`)
+            }
 
-        // Initialize Spotify API
-        this.api = SpotifyApi.withAccessToken(CLIENT_ID, {
-            access_token: tokenData.access_token,
-            token_type: 'Bearer',
-            expires_in: tokenData.expires_in,
-            refresh_token: tokenData.refresh_token
-        })
+            const tokenData = JSON.parse(responseText)
 
-        // Get user profile
-        const userProfile = await this.api.currentUser.profile()
+            // Store tokens
+            localStorage.setItem('spotify_access_token', tokenData.access_token)
+            localStorage.setItem('spotify_refresh_token', tokenData.refresh_token)
+            localStorage.setItem('spotify_token_expires',
+                (Date.now() + tokenData.expires_in * 1000).toString()
+            )
 
-        return {
-            id: userProfile.id,
-            name: userProfile.display_name,
-            email: userProfile.email,
-            image: userProfile.images?.[0]?.url,
-            followers: userProfile.followers?.total
+            console.log('Tokens stored successfully')
+
+            // Clean up PKCE data
+            sessionStorage.removeItem('spotify_auth_state')
+            sessionStorage.removeItem('code_verifier')
+
+            // Initialize Spotify API
+            this.api = SpotifyApi.withAccessToken(CLIENT_ID, {
+                access_token: tokenData.access_token,
+                token_type: 'Bearer',
+                expires_in: tokenData.expires_in,
+                refresh_token: tokenData.refresh_token
+            })
+
+            // Get user profile
+            const userProfile = await this.api.currentUser.profile()
+            console.log('=== SPOTIFY LOGIN COMPLETE ===')
+
+            return {
+                id: userProfile.id,
+                name: userProfile.display_name,
+                email: userProfile.email,
+                image: userProfile.images?.[0]?.url,
+                followers: userProfile.followers?.total
+            }
+
+        } catch (error) {
+            console.error('Spotify callback error:', error)
+            this.logout() // Clear any partial state
+            throw error
         }
     }
 
@@ -177,28 +206,59 @@ export class SpotifyAuth {
         followers?: number;
     } | null> {
         const accessToken = localStorage.getItem('spotify_access_token')
+        const refreshToken = localStorage.getItem('spotify_refresh_token')
         const expiresAt = localStorage.getItem('spotify_token_expires')
 
-        if (!accessToken || !expiresAt) {
+        console.log('Checking existing login:', {
+            hasAccessToken: !!accessToken,
+            hasRefreshToken: !!refreshToken,
+            expiresAt,
+            isExpired: expiresAt ? Date.now() > parseInt(expiresAt) : 'N/A'
+        })
+
+        if (!accessToken || !refreshToken) {
+            console.log('Missing tokens, clearing storage')
+            this.logout()
             return null
         }
 
         // Check if token is expired
-        if (Date.now() > parseInt(expiresAt)) {
-            await this.refreshToken()
-            return this.checkExistingLogin() // Retry after refresh
+        if (Date.now() > parseInt(expiresAt || '0')) {
+            console.log('Token expired, attempting refresh...')
+            try {
+                await this.refreshToken()
+                // After successful refresh, get new token
+                const newAccessToken = localStorage.getItem('spotify_access_token')
+                if (!newAccessToken) {
+                    console.log('Refresh succeeded but no new token found')
+                    this.logout()
+                    return null
+                }
+            } catch (error) {
+                console.error('Token refresh failed:', error)
+                this.logout() // Clear invalid tokens
+                return null
+            }
         }
 
-        // Initialize API with existing token
+        // Initialize API with current token
+        const currentAccessToken = localStorage.getItem('spotify_access_token')
+        if (!currentAccessToken) {
+            this.logout()
+            return null
+        }
+
         this.api = SpotifyApi.withAccessToken(CLIENT_ID, {
-            access_token: accessToken,
+            access_token: currentAccessToken,
             token_type: 'Bearer',
-            expires_in: 3600, // Default 1 hour
+            expires_in: 3600,
             refresh_token: localStorage.getItem('spotify_refresh_token') || ''
         })
 
         try {
             const userProfile = await this.api.currentUser.profile()
+            console.log('Successfully retrieved user profile:', userProfile.display_name)
+
             return {
                 id: userProfile.id,
                 name: userProfile.display_name,
@@ -207,7 +267,8 @@ export class SpotifyAuth {
                 followers: userProfile.followers?.total
             }
         } catch (error) {
-            // Token might be invalid, clear it
+            console.error('Failed to get user profile, clearing tokens:', error)
+            // Token might be invalid despite refresh, clear everything
             this.logout()
             return null
         }
@@ -220,39 +281,61 @@ export class SpotifyAuth {
             throw new Error('No refresh token available')
         }
 
-        const response = await fetch('https://accounts.spotify.com/api/token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new URLSearchParams({
-                grant_type: 'refresh_token',
-                refresh_token: refreshToken,
-                client_id: CLIENT_ID,
-                // NO CLIENT SECRET - PKCE handles security
-            }),
-        })
+        console.log('Attempting to refresh Spotify token...')
 
-        if (!response.ok) {
-            const errorText = await response.text()
-            console.error('Spotify token refresh failed:', errorText)
-            throw new Error(`Failed to refresh token: ${response.status}`)
-        }
+        try {
+            const response = await fetch('https://accounts.spotify.com/api/token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    grant_type: 'refresh_token',
+                    refresh_token: refreshToken,
+                    client_id: CLIENT_ID,
+                }),
+            })
 
-        const tokenData = await response.json()
+            const responseText = await response.text()
+            console.log('Refresh token response:', {
+                status: response.status,
+                statusText: response.statusText,
+                body: responseText.substring(0, 200) + '...'
+            })
 
-        // Update stored tokens
-        localStorage.setItem('spotify_access_token', tokenData.access_token)
-        localStorage.setItem('spotify_token_expires',
-            (Date.now() + tokenData.expires_in * 1000).toString()
-        )
+            if (!response.ok) {
+                // Parse error if possible
+                let errorDetails = responseText
+                try {
+                    const errorData = JSON.parse(responseText)
+                    errorDetails = errorData.error_description || errorData.error || responseText
+                } catch (e) {
+                    // Use raw response if not JSON
+                }
 
-        if (tokenData.refresh_token) {
-            localStorage.setItem('spotify_refresh_token', tokenData.refresh_token)
+                throw new Error(`Refresh failed (${response.status}): ${errorDetails}`)
+            }
+
+            const tokenData = JSON.parse(responseText)
+
+            // Update stored tokens
+            localStorage.setItem('spotify_access_token', tokenData.access_token)
+            localStorage.setItem('spotify_token_expires',
+                (Date.now() + tokenData.expires_in * 1000).toString()
+            )
+
+            // Spotify sometimes sends a new refresh token
+            if (tokenData.refresh_token) {
+                localStorage.setItem('spotify_refresh_token', tokenData.refresh_token)
+            }
+
+            console.log('Token refresh successful')
+
+        } catch (error) {
+            console.error('Token refresh error:', error)
+            throw error
         }
     }
-
-    // ... rest of the methods remain exactly the same ...
 
     // Get user's playlists with full details (paginated)
     async getUserPlaylists(offset = 0, limit = 50): Promise<SpotifyPlaylist[]> {
@@ -431,9 +514,11 @@ export class SpotifyAuth {
 
     // Logout
     logout(): void {
+        console.log('Logging out of Spotify...')
         localStorage.removeItem('spotify_access_token')
         localStorage.removeItem('spotify_refresh_token')
         localStorage.removeItem('spotify_token_expires')
+        localStorage.removeItem('spotify_user') // Also clear stored user
         sessionStorage.removeItem('spotify_auth_state')
         sessionStorage.removeItem('code_verifier')
         this.api = null

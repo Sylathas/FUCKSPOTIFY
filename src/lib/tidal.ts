@@ -145,10 +145,17 @@ export class TidalIntegration {
 
         // Store state for verification
         if (typeof window !== 'undefined') {
+            localStorage.setItem('tidal_auth_state', state)
+            localStorage.setItem('tidal_code_verifier', codeVerifier)
+            // Also store in sessionStorage as backup
             sessionStorage.setItem('tidal_auth_state', state)
+            sessionStorage.setItem('tidal_code_verifier', codeVerifier)
         }
 
         console.log('TIDAL_REDIRECT_URI being used:', TIDAL_REDIRECT_URI);
+        console.log('Code verifier length:', codeVerifier.length)
+        console.log('Code challenge:', codeChallenge)
+
 
         const params = new URLSearchParams({
             response_type: 'code',
@@ -171,14 +178,54 @@ export class TidalIntegration {
     // Step 2: Handle OAuth callback
     async handleCallback(code: string, state: string): Promise<TidalUser> {
         console.log('=== TIDAL CALLBACK STARTED ===')
+        console.log('Received parameters:', {
+            code: code ? `${code.substring(0, 20)}...` : 'Missing',
+            state: state || 'Missing'
+        })
 
-        // Verify state
-        const storedState = typeof window !== 'undefined' ? sessionStorage.getItem('tidal_auth_state') : null
+        // Verify state - try both localStorage and sessionStorage
+        const storedStateLocal = typeof window !== 'undefined' ? localStorage.getItem('tidal_auth_state') : null
+        const storedStateSession = typeof window !== 'undefined' ? sessionStorage.getItem('tidal_auth_state') : null
+        const storedState = storedStateLocal || storedStateSession
+
+        console.log('State verification:', {
+            received: state,
+            storedLocal: storedStateLocal,
+            storedSession: storedStateSession,
+            using: storedState,
+            match: state === storedState
+        })
+
         if (state !== storedState) {
+            console.error('State mismatch:', { received: state, stored: storedState })
             throw new Error('State mismatch - possible CSRF attack')
         }
 
-        console.log('State verified, calling API route...')
+        // Get code verifier for PKCE - try both localStorage and sessionStorage
+        const codeVerifierLocal = typeof window !== 'undefined' ? localStorage.getItem('tidal_code_verifier') : null
+        const codeVerifierSession = typeof window !== 'undefined' ? sessionStorage.getItem('tidal_code_verifier') : null
+        const codeVerifier = codeVerifierLocal || codeVerifierSession
+
+        console.log('Code verifier check:', {
+            foundLocal: !!codeVerifierLocal,
+            foundSession: !!codeVerifierSession,
+            using: codeVerifier ? 'found' : 'missing',
+            length: codeVerifier?.length || 0,
+            preview: codeVerifier ? `${codeVerifier.substring(0, 20)}...` : 'N/A'
+        })
+
+        if (!codeVerifier) {
+            console.error('Code verifier not found in either storage')
+            console.log('Available localStorage keys:',
+                typeof window !== 'undefined' ? Object.keys(localStorage) : 'N/A'
+            )
+            console.log('Available sessionStorage keys:',
+                typeof window !== 'undefined' ? Object.keys(sessionStorage) : 'N/A'
+            )
+            throw new Error('Code verifier not found - PKCE verification failed')
+        }
+
+        console.log('State and PKCE verified, calling API route...')
 
         // Use API route for token exchange
         const response = await fetch('/api/tidal/auth', {
@@ -189,6 +236,7 @@ export class TidalIntegration {
             body: JSON.stringify({
                 code: code,
                 redirectUri: TIDAL_REDIRECT_URI,
+                codeVerifier: codeVerifier,  // Include PKCE code verifier - THIS WAS MISSING!
             }),
         })
 
@@ -204,6 +252,14 @@ export class TidalIntegration {
         console.log('Token received, storing...')
 
         this.storeTokens(tokenData)
+
+        // Clean up stored PKCE data from both storages
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('tidal_auth_state')
+            localStorage.removeItem('tidal_code_verifier')
+            sessionStorage.removeItem('tidal_auth_state')
+            sessionStorage.removeItem('tidal_code_verifier')
+        }
 
         // Get user profile
         const userProfile = await this.getUserProfile()
