@@ -1,10 +1,8 @@
 import { SpotifyApi } from '@spotify/web-api-ts-sdk'
 import { SpotifyTrack, SpotifyAlbum, SpotifyPlaylist } from '@/types'
 
-// Spotify OAuth configuration
+// Spotify OAuth configuration - NO CLIENT SECRET NEEDED FOR PKCE
 const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID!
-const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!
-// Use environment variable or construct from current domain
 const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI ||
     (typeof window !== 'undefined' ? `${window.location.origin}/callback` : 'http://localhost:3000/callback')
 
@@ -100,7 +98,7 @@ export class SpotifyAuth {
         }
     }
 
-    // Step 2: Handle callback and exchange code for token
+    // Step 2: Handle callback and exchange code for token (PKCE ONLY - NO CLIENT SECRET)
     async handleCallback(code: string, state: string): Promise<{
         id: string;
         name: string;
@@ -119,7 +117,7 @@ export class SpotifyAuth {
             throw new Error('Code verifier not found')
         }
 
-        // Exchange authorization code for access token
+        // Exchange authorization code for access token using PKCE (NO CLIENT SECRET)
         const response = await fetch('https://accounts.spotify.com/api/token', {
             method: 'POST',
             headers: {
@@ -131,11 +129,14 @@ export class SpotifyAuth {
                 redirect_uri: REDIRECT_URI,
                 client_id: CLIENT_ID,
                 code_verifier: codeVerifier,
+                // NO CLIENT SECRET - PKCE handles security
             }),
         })
 
         if (!response.ok) {
-            throw new Error('Failed to exchange code for token')
+            const errorText = await response.text()
+            console.error('Spotify token exchange failed:', errorText)
+            throw new Error(`Failed to exchange code for token: ${response.status}`)
         }
 
         const tokenData = await response.json()
@@ -212,7 +213,7 @@ export class SpotifyAuth {
         }
     }
 
-    // Refresh expired token
+    // Refresh expired token (PKCE - NO CLIENT SECRET NEEDED)
     async refreshToken(): Promise<void> {
         const refreshToken = localStorage.getItem('spotify_refresh_token')
         if (!refreshToken) {
@@ -228,11 +229,14 @@ export class SpotifyAuth {
                 grant_type: 'refresh_token',
                 refresh_token: refreshToken,
                 client_id: CLIENT_ID,
+                // NO CLIENT SECRET - PKCE handles security
             }),
         })
 
         if (!response.ok) {
-            throw new Error('Failed to refresh token')
+            const errorText = await response.text()
+            console.error('Spotify token refresh failed:', errorText)
+            throw new Error(`Failed to refresh token: ${response.status}`)
         }
 
         const tokenData = await response.json()
@@ -248,6 +252,8 @@ export class SpotifyAuth {
         }
     }
 
+    // ... rest of the methods remain exactly the same ...
+
     // Get user's playlists with full details (paginated)
     async getUserPlaylists(offset = 0, limit = 50): Promise<SpotifyPlaylist[]> {
         if (!this.api) {
@@ -255,20 +261,8 @@ export class SpotifyAuth {
         }
 
         try {
-            // Get all user playlists (Spotify paginates results)
-            const playlists = []
-            let offset = 0
-            const limit = 50
-
-            while (true) {
-                const response = await this.api.currentUser.playlists.playlists(limit, offset)
-                playlists.push(...response.items)
-
-                if (response.items.length < limit) {
-                    break // No more playlists
-                }
-                offset += limit
-            }
+            const response = await this.api.currentUser.playlists.playlists(50, offset)
+            const playlists = response.items
 
             // Get detailed information for each playlist
             const detailedPlaylists = await Promise.all(
@@ -280,8 +274,8 @@ export class SpotifyAuth {
                             id: fullPlaylist.id,
                             name: fullPlaylist.name,
                             description: fullPlaylist.description || null,
-                            images: fullPlaylist.images, // Array of cover images in different sizes
-                            coverImage: fullPlaylist.images?.[0]?.url || undefined, // Highest resolution cover
+                            images: fullPlaylist.images,
+                            coverImage: fullPlaylist.images?.[0]?.url || undefined,
                             trackCount: fullPlaylist.tracks.total,
                             isPublic: fullPlaylist.public,
                             collaborative: fullPlaylist.collaborative,
@@ -290,7 +284,6 @@ export class SpotifyAuth {
                                 name: fullPlaylist.owner.display_name || null
                             },
                             spotifyUrl: fullPlaylist.external_urls.spotify,
-                            // We'll get tracks separately to avoid huge payloads
                         }
                     } catch (error) {
                         console.error(`Error fetching playlist ${playlist.id}:`, error)
@@ -320,13 +313,12 @@ export class SpotifyAuth {
             while (true) {
                 const response = await this.api.playlists.getPlaylistItems(
                     playlistId,
-                    'US', // Market
-                    undefined, // Fields (all)
+                    'US',
+                    undefined,
                     limit,
                     offset
                 )
 
-                // Filter out non-track items (podcasts, etc.) and extract track data
                 const trackItems = response.items
                     .filter(item => item.track && item.track.type === 'track')
                     .map(item => ({
@@ -347,7 +339,7 @@ export class SpotifyAuth {
                         popularity: item.track.popularity,
                         previewUrl: item.track.preview_url || null,
                         spotifyUrl: item.track.external_urls.spotify,
-                        isrc: item.track.external_ids?.isrc || null, // International Standard Recording Code
+                        isrc: item.track.external_ids?.isrc || null,
                         addedAt: item.added_at,
                         addedBy: item.added_by
                     }))

@@ -375,6 +375,11 @@ export default function MusicSelectorSection({
                                 }`}
                             title={selectingAllTracks ? "Loading..." : selectedSongs.length > 0 ? "Deselect All" : "Select All"}
                         />
+                        {selectingAllTracks && (
+                            <div className="flex justify-center mt-1">
+                                <img src="/loading.gif" alt="Loading" className="h-4 w-4" />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -436,6 +441,11 @@ export default function MusicSelectorSection({
                                 }`}
                             title={selectingAllAlbums ? "Loading..." : selectedAlbums.length > 0 ? "Deselect All" : "Select All"}
                         />
+                        {selectingAllAlbums && (
+                            <div className="flex justify-center mt-1">
+                                <img src="/loading.gif" alt="Loading" className="h-4 w-4" />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -497,6 +507,11 @@ export default function MusicSelectorSection({
                                 }`}
                             title={selectingAllPlaylists ? "Loading..." : selectedPlaylists.length > 0 ? "Deselect All" : "Select All"}
                         />
+                        {selectingAllPlaylists && (
+                            <div className="flex justify-center mt-1">
+                                <img src="/loading.gif" alt="Loading" className="h-4 w-4" />
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

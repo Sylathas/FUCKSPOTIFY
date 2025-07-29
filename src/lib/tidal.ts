@@ -196,43 +196,29 @@ export class TidalIntegration {
             throw new Error('State mismatch - possible CSRF attack')
         }
 
-        if (!TIDAL_CLIENT_ID || !TIDAL_CLIENT_SECRET) {
-            console.error('Missing Tidal credentials:', {
-                clientId: TIDAL_CLIENT_ID ? 'Set' : 'Missing',
-                clientSecret: TIDAL_CLIENT_SECRET ? 'Set' : 'Missing'
-            })
-            throw new Error('Tidal credentials not configured')
-        }
+        // Use API route for token exchange (keeps client secret secure)
+        console.log('Attempting token exchange via API route...')
 
-        // Exchange code for tokens
-        console.log('Attempting token exchange with Tidal...')
-
-        const credentials = btoa(`${TIDAL_CLIENT_ID}:${TIDAL_CLIENT_SECRET}`)
-        console.log('Authorization header prepared (base64 encoded credentials)')
-
-        const tokenResponse = await fetch(`${TIDAL_AUTH_BASE}/v1/oauth2/token`, {
+        const tokenResponse = await fetch('/api/tidal/auth', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Basic ${credentials}`
+                'Content-Type': 'application/json',
             },
-            body: new URLSearchParams({
-                grant_type: 'authorization_code',
+            body: JSON.stringify({
                 code: code,
-                redirect_uri: TIDAL_REDIRECT_URI,
+                redirectUri: TIDAL_REDIRECT_URI,
             }),
         })
 
-        console.log('Token response status:', tokenResponse.status)
+        console.log('API token response status:', tokenResponse.status)
 
         if (!tokenResponse.ok) {
-            const errorText = await tokenResponse.text()
+            const errorData = await tokenResponse.json()
             console.error('Token exchange failed:', {
                 status: tokenResponse.status,
-                statusText: tokenResponse.statusText,
-                error: errorText
+                error: errorData
             })
-            throw new Error(`Failed to exchange code for token: ${tokenResponse.status} - ${errorText}`)
+            throw new Error(`Failed to exchange code for token: ${errorData.error || tokenResponse.status}`)
         }
 
         const tokenData: TidalTokenResponse = await tokenResponse.json()
