@@ -296,42 +296,6 @@ export class TidalIntegration {
         return response;
     }
 
-    async getUserProfile(): Promise<TidalUser> {
-        // Get user profile using the v2 /me endpoint
-        const response = await this.fetchWithAuth(
-            `${TIDAL_API_BASE}/v2/me?countryCode=${this.countryCode}`
-        );
-
-        if (!response.ok) {
-            console.error("Get user profile failed:", response.status);
-            throw new Error('Failed to fetch user profile');
-        }
-
-        const responseData = await response.json();
-        const userData = responseData.data;
-
-        // Extract country code from the included session if available
-        const session = responseData.included?.find((item: any) => item.type === 'sessions');
-        if (session?.attributes?.countryCode) {
-            this.countryCode = session.attributes.countryCode;
-        }
-
-        this.currentUser = {
-            id: userData.id,
-            username: userData.attributes?.email || userData.attributes?.username || 'Tidal User',
-            email: userData.attributes?.email,
-            firstName: userData.attributes?.firstName,
-            lastName: userData.attributes?.lastName,
-            countryCode: this.countryCode,
-        };
-
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('tidal_user', JSON.stringify(this.currentUser));
-        }
-
-        return this.currentUser;
-    }
-
     async searchTrack(track: SpotifyTrack): Promise<string | null> {
         try {
             // Build search query - use exact track name and primary artist
@@ -392,8 +356,7 @@ export class TidalIntegration {
                     attributes: {
                         name: playlist.name,
                         description: playlist.description || `Imported from Spotify: ${playlist.name}`,
-                        // CORRECT: Use 'accessType' with string values
-                        accessType: 'PRIVATE' // Or 'PUBLIC' if you want them to be public
+                        accessType: 'PRIVATE'
                     }
                 }
             };
