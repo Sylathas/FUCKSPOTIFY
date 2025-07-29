@@ -253,6 +253,15 @@ export default function TransferButtonSection({
                     </p>
                 </div>
             )}
+            <button
+                onClick={async () => {
+                    console.log('Starting debug...');
+                    await (tidalIntegration as any).quickDebugPlaylistCreation();
+                }}
+                className="absolute top-0 right-0 bg-red-500 text-white p-2 text-xs"
+            >
+                Debug Tidal
+            </button>
         </div>
     )
 }

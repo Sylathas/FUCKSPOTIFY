@@ -361,6 +361,7 @@ export class TidalIntegration {
                 }
             };
 
+
             const response = await this.fetchWithAuth(
                 `${TIDAL_API_BASE}/v2/playlists?countryCode=${this.countryCode}`,
                 {
@@ -368,6 +369,14 @@ export class TidalIntegration {
                     body: JSON.stringify(body),
                 }
             );
+
+            console.log('Creating playlist with URL:', `${TIDAL_API_BASE}/v2/playlists?countryCode=${this.countryCode}`);
+            console.log('Request body:', JSON.stringify(body, null, 2));
+            console.log('Headers:', {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Accept': 'application/vnd.tidal.v2+json',
+                'Content-Type': 'application/vnd.tidal.v2+json',
+            });
 
             if (!response.ok) {
                 console.error('Failed to create playlist:', playlist.name);
@@ -498,6 +507,304 @@ export class TidalIntegration {
         }
 
         return results;
+    }
+
+    // Debug method to test various API endpoints
+    async debugAPI(): Promise<void> {
+        console.log('=== TIDAL API DEBUG START ===');
+
+        if (!this.isAuthenticated()) {
+            console.error('❌ Not authenticated. Please login first.');
+            return;
+        }
+
+        console.log('✅ Authenticated with token:', this.accessToken?.substring(0, 20) + '...');
+        console.log('Country Code:', this.countryCode);
+
+        // 1. Test basic API connectivity
+        console.log('\n1. Testing basic API connectivity...');
+        try {
+            const testResponse = await fetch(`${TIDAL_API_BASE}/v2`, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Accept': 'application/vnd.tidal.v2+json',
+                }
+            });
+            console.log('Base API response:', testResponse.status, testResponse.statusText);
+        } catch (error) {
+            console.error('Base API error:', error);
+        }
+
+        // 2. Test user endpoint
+        console.log('\n2. Testing user endpoint...');
+        try {
+            const userResponse = await this.fetchWithAuth(
+                `${TIDAL_API_BASE}/v2/me?countryCode=${this.countryCode}`
+            );
+            console.log('User endpoint status:', userResponse.status);
+            if (userResponse.ok) {
+                const userData = await userResponse.json();
+                console.log('User data:', JSON.stringify(userData, null, 2));
+            } else {
+                console.error('User endpoint error:', await userResponse.text());
+            }
+        } catch (error) {
+            console.error('User endpoint error:', error);
+        }
+
+        // 3. Test GET playlists endpoint
+        console.log('\n3. Testing GET playlists...');
+        try {
+            const getPlaylistsResponse = await this.fetchWithAuth(
+                `${TIDAL_API_BASE}/v2/playlists?countryCode=${this.countryCode}&limit=1`
+            );
+            console.log('GET playlists status:', getPlaylistsResponse.status);
+            if (getPlaylistsResponse.ok) {
+                const data = await getPlaylistsResponse.json();
+                console.log('GET playlists response:', JSON.stringify(data, null, 2));
+            } else {
+                console.error('GET playlists error:', await getPlaylistsResponse.text());
+            }
+        } catch (error) {
+            console.error('GET playlists error:', error);
+        }
+
+        // 4. Test different playlist creation approaches
+        console.log('\n4. Testing playlist creation variations...');
+
+        // Variation A: Exact API doc format
+        const testPlaylistA = {
+            data: {
+                attributes: {
+                    accessType: "PRIVATE",
+                    description: "Debug test playlist A",
+                    name: "Test Playlist A - " + Date.now()
+                },
+                type: "playlists"
+            }
+        };
+
+        // Variation B: With user ID in path
+        const userId = this.currentUser?.id || parseJwt(this.accessToken!)?.sub;
+
+        // Variation C: Different header combinations
+        const headerVariations: HeadersInit[] = [
+            {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Accept': 'application/vnd.tidal.v2+json',
+                'Content-Type': 'application/vnd.tidal.v2+json',
+            } as HeadersInit,
+            {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+            } as HeadersInit,
+            {
+                'Authorization': `Bearer ${this.accessToken}`,
+                'Content-Type': 'application/vnd.tidal.v2+json',
+            } as HeadersInit
+        ];
+
+        // Test Variation A - Standard endpoint
+        console.log('\n4a. Testing standard endpoint...');
+        try {
+            const response = await fetch(
+                `${TIDAL_API_BASE}/v2/playlists?countryCode=${this.countryCode}`,
+                {
+                    method: 'POST',
+                    headers: headerVariations[0],
+                    body: JSON.stringify(testPlaylistA)
+                }
+            );
+            console.log('Standard endpoint response:', response.status, response.statusText);
+            const responseText = await response.text();
+            console.log('Response body:', responseText);
+        } catch (error) {
+            console.error('Standard endpoint error:', error);
+        }
+
+        // Test Variation B - User endpoint
+        if (userId) {
+            console.log('\n4b. Testing user-specific endpoint...');
+            console.log('User ID:', userId);
+            try {
+                const response = await fetch(
+                    `${TIDAL_API_BASE}/v2/users/${userId}/playlists?countryCode=${this.countryCode}`,
+                    {
+                        method: 'POST',
+                        headers: headerVariations[0],
+                        body: JSON.stringify(testPlaylistA)
+                    }
+                );
+                console.log('User endpoint response:', response.status, response.statusText);
+                const responseText = await response.text();
+                console.log('Response body:', responseText);
+            } catch (error) {
+                console.error('User endpoint error:', error);
+            }
+        }
+
+        // 5. Test v1 API (if v2 isn't working)
+        console.log('\n5. Testing v1 API fallback...');
+        try {
+            const v1Response = await fetch(
+                `https://api.tidal.com/v1/users/${userId}/playlists?countryCode=${this.countryCode}`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.accessToken}`,
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        title: 'Test Playlist v1 - ' + Date.now(),
+                        description: 'Testing v1 API'
+                    })
+                }
+            );
+            console.log('v1 API response:', v1Response.status, v1Response.statusText);
+            if (!v1Response.ok) {
+                console.log('v1 response:', await v1Response.text());
+            }
+        } catch (error) {
+            console.error('v1 API error:', error);
+        }
+
+        // 6. List available endpoints
+        console.log('\n6. Checking API documentation endpoint...');
+        try {
+            const docsResponse = await fetch(`${TIDAL_API_BASE}/v2/`, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                }
+            });
+            console.log('API root response:', docsResponse.status);
+            if (docsResponse.ok) {
+                const text = await docsResponse.text();
+                console.log('API root content:', text.substring(0, 500));
+            }
+        } catch (error) {
+            console.error('API root error:', error);
+        }
+
+        console.log('\n=== TIDAL API DEBUG END ===');
+    }
+
+    // Add this method to test with curl command equivalent
+    async getCurlCommand(): Promise<string> {
+        const body = {
+            data: {
+                attributes: {
+                    accessType: "PRIVATE",
+                    description: "Test playlist",
+                    name: "Test Playlist - " + Date.now()
+                },
+                type: "playlists"
+            }
+        };
+
+        const curlCommand = `curl -X POST '${TIDAL_API_BASE}/v2/playlists?countryCode=${this.countryCode}' \\
+  -H 'Authorization: Bearer ${this.accessToken}' \\
+  -H 'Accept: application/vnd.tidal.v2+json' \\
+  -H 'Content-Type: application/vnd.tidal.v2+json' \\
+  -d '${JSON.stringify(body)}'`;
+
+        console.log('Try this curl command:\n', curlCommand);
+        return curlCommand;
+    }
+
+    async quickDebugPlaylistCreation(): Promise<void> {
+        console.log('=== QUICK PLAYLIST DEBUG ===');
+
+        const token = this.accessToken;
+        const country = this.countryCode;
+
+        // 1. Log current state
+        console.log('Token (first 20 chars):', token?.substring(0, 20) + '...');
+        console.log('Country:', country);
+
+        // 2. Try the simplest possible request
+        const testBody = {
+            data: {
+                type: "playlists",
+                attributes: {
+                    name: "Debug Test " + Date.now(),
+                    accessType: "PRIVATE"
+                }
+            }
+        };
+
+        console.log('Request URL:', `${TIDAL_API_BASE}/v2/playlists?countryCode=${country}`);
+        console.log('Request body:', JSON.stringify(testBody, null, 2));
+
+        try {
+            const response = await fetch(
+                `${TIDAL_API_BASE}/v2/playlists?countryCode=${country}`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/vnd.tidal.v2+json',
+                        'Accept': 'application/vnd.tidal.v2+json'
+                    },
+                    body: JSON.stringify(testBody)
+                }
+            );
+
+            console.log('Response status:', response.status);
+            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+            const responseText = await response.text();
+            console.log('Response body:', responseText);
+
+            // Try to parse as JSON if possible
+            try {
+                const responseJson = JSON.parse(responseText);
+                console.log('Parsed response:', JSON.stringify(responseJson, null, 2));
+            } catch {
+                // Not JSON, that's ok
+            }
+
+        } catch (error) {
+            console.error('Request failed:', error);
+        }
+
+        console.log('=== END DEBUG ===');
+    }
+
+    // Also add this method to manually test in browser console
+    async testTidalAPI(): Promise<void> {
+        // This can be called from browser console: tidalIntegration.testTidalAPI()
+
+        const endpoints = [
+            '/v2',
+            '/v2/me',
+            '/v2/playlists',
+            '/v1/users/me',
+            '/v1/playlists'
+        ];
+
+        console.log('Testing multiple endpoints...');
+
+        for (const endpoint of endpoints) {
+            try {
+                const url = `${TIDAL_API_BASE}${endpoint}?countryCode=${this.countryCode}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${this.accessToken}`,
+                        'Accept': 'application/vnd.tidal.v2+json'
+                    }
+                });
+
+                console.log(`${endpoint}: ${response.status} ${response.statusText}`);
+
+                if (response.status === 404) {
+                    const text = await response.text();
+                    console.log(`  404 details: ${text}`);
+                }
+            } catch (error) {
+                console.log(`${endpoint}: ERROR - ${error}`);
+            }
+        }
     }
 
     logout(): void {
