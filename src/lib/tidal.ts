@@ -188,40 +188,17 @@ export class TidalIntegration {
         const storedStateSession = typeof window !== 'undefined' ? sessionStorage.getItem('tidal_auth_state') : null
         const storedState = storedStateLocal || storedStateSession
 
-        console.log('State verification:', {
-            received: state,
-            storedLocal: storedStateLocal,
-            storedSession: storedStateSession,
-            using: storedState,
-            match: state === storedState
-        })
-
         if (state !== storedState) {
             console.error('State mismatch:', { received: state, stored: storedState })
             throw new Error('State mismatch - possible CSRF attack')
         }
 
-        // Get code verifier for PKCE - try both localStorage and sessionStorage
+        // Get code verifier for PKCE
         const codeVerifierLocal = typeof window !== 'undefined' ? localStorage.getItem('tidal_code_verifier') : null
         const codeVerifierSession = typeof window !== 'undefined' ? sessionStorage.getItem('tidal_code_verifier') : null
         const codeVerifier = codeVerifierLocal || codeVerifierSession
 
-        console.log('Code verifier check:', {
-            foundLocal: !!codeVerifierLocal,
-            foundSession: !!codeVerifierSession,
-            using: codeVerifier ? 'found' : 'missing',
-            length: codeVerifier?.length || 0,
-            preview: codeVerifier ? `${codeVerifier.substring(0, 20)}...` : 'N/A'
-        })
-
         if (!codeVerifier) {
-            console.error('Code verifier not found in either storage')
-            console.log('Available localStorage keys:',
-                typeof window !== 'undefined' ? Object.keys(localStorage) : 'N/A'
-            )
-            console.log('Available sessionStorage keys:',
-                typeof window !== 'undefined' ? Object.keys(sessionStorage) : 'N/A'
-            )
             throw new Error('Code verifier not found - PKCE verification failed')
         }
 
@@ -236,11 +213,9 @@ export class TidalIntegration {
             body: JSON.stringify({
                 code: code,
                 redirectUri: TIDAL_REDIRECT_URI,
-                codeVerifier: codeVerifier,  // Include PKCE code verifier - THIS WAS MISSING!
+                codeVerifier: codeVerifier,
             }),
         })
-
-        console.log('API route response status:', response.status)
 
         if (!response.ok) {
             const errorData = await response.json()
@@ -251,11 +226,15 @@ export class TidalIntegration {
         const tokenData = await response.json()
         console.log('Token received, storing...')
 
-        await this.discoverWorkingEndpoints()
-
+        // Store the tokens - THIS SETS this.accessToken
         this.storeTokens(tokenData)
 
-        // Clean up stored PKCE data from both storages
+        // IMPORTANT: Verify the token was stored
+        console.log('Token stored, verifying...')
+        console.log('this.accessToken exists:', !!this.accessToken)
+        console.log('this.accessToken length:', this.accessToken?.length || 0)
+
+        // Clean up stored PKCE data
         if (typeof window !== 'undefined') {
             localStorage.removeItem('tidal_auth_state')
             localStorage.removeItem('tidal_code_verifier')
@@ -263,10 +242,14 @@ export class TidalIntegration {
             sessionStorage.removeItem('tidal_code_verifier')
         }
 
-        // Get user profile
+        // Get user profile (or create fallback user)
         const userProfile = await this.getUserProfile()
-        console.log('=== TIDAL LOGIN COMPLETE ===')
 
+        // 🚀 NOW RUN DISCOVERY - Token is definitely set at this point
+        console.log('Running endpoint discovery...')
+        await this.discoverWorkingEndpoints()
+
+        console.log('=== TIDAL LOGIN COMPLETE ===')
         return userProfile
     }
 
@@ -694,13 +677,19 @@ export class TidalIntegration {
     async discoverWorkingEndpoints(): Promise<void> {
         console.log('🚀 DISCOVERING WORKING TIDAL API ENDPOINTS...')
 
-        if (!this.accessToken) {
+        // More thorough access token check
+        console.log('Checking access token availability...')
+        console.log('this.accessToken exists:', !!this.accessToken)
+        console.log('this.accessToken length:', this.accessToken?.length || 0)
+
+        if (!this.accessToken || this.accessToken.length === 0) {
             console.error('❌ No access token available for discovery')
+            console.log('Available properties:', Object.keys(this))
             return
         }
 
-        console.log('Access token available:', !!this.accessToken)
-        console.log('Starting systematic endpoint discovery...')
+        console.log('✅ Access token confirmed, starting discovery...')
+        console.log('Token preview:', this.accessToken.substring(0, 20) + '...')
         console.log('='.repeat(80))
 
         // Test endpoint helper
@@ -722,6 +711,7 @@ export class TidalIntegration {
                     options.body = JSON.stringify(body)
                 }
 
+                console.log(`Testing: ${method} ${TIDAL_API_BASE}${endpoint}`)
                 const response = await fetch(`${TIDAL_API_BASE}${endpoint}`, options)
                 const responseText = await response.text()
 
