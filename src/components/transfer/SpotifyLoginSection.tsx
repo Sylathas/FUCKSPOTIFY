@@ -137,7 +137,7 @@ export default function SpotifyLoginSection({
 
             {/* Login Button Image */}
             {spotifyUser ? (
-                <div className="relative">
+                <>
                     <img
                         src="/Buttons/Logged.png"
                         alt="Spotify Connected"
@@ -157,7 +157,7 @@ export default function SpotifyLoginSection({
                     >
                         Logout
                     </button>
-                </div>
+                </>
             ) : (
                 <img
                     src="/Buttons/Login.png"

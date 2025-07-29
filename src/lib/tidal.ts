@@ -270,33 +270,69 @@ export class TidalIntegration {
 
     // Get user profile from Tidal
     private async getUserProfile(): Promise<TidalUser> {
-        const response = await fetch(`${TIDAL_API_BASE}/v2/me`, {
-            headers: {
-                'Authorization': `Bearer ${this.accessToken}`,
-                'Accept': 'application/vnd.tidal.v1+json',
+        console.log('=== GETTING TIDAL USER PROFILE ===')
+        console.log('Access token available:', !!this.accessToken)
+        console.log('Token preview:', this.accessToken ? `${this.accessToken.substring(0, 20)}...` : 'None')
+
+        if (!this.accessToken) {
+            throw new Error('No access token available')
+        }
+
+        try {
+            // Use the correct endpoint from Tidal API docs: /users/me
+            console.log('Using correct Tidal API endpoint: /v2/users/me')
+
+            const response = await fetch(`${TIDAL_API_BASE}/v2/users/me`, {
+                headers: {
+                    'Authorization': `Bearer ${this.accessToken}`,
+                    'Accept': 'application/vnd.tidal.v1+json',
+                }
+            })
+
+            console.log('User profile response:', {
+                status: response.status,
+                statusText: response.statusText,
+                headers: Object.fromEntries(response.headers.entries())
+            })
+
+            if (!response.ok) {
+                const errorText = await response.text()
+                console.error('User profile request failed:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    body: errorText
+                })
+                throw new Error(`Failed to get user profile: ${response.status} - ${errorText}`)
             }
-        })
 
-        if (!response.ok) {
-            throw new Error(`Failed to get user profile: ${response.status}`)
+            const data = await response.json()
+            console.log('User profile data received:', data)
+
+            // Parse the response structure according to Tidal API format
+            const userData = data.data || data
+
+            this.currentUser = {
+                id: userData.id || userData.attributes?.id || 'unknown',
+                username: userData.attributes?.username || userData.username || 'Unknown User',
+                firstName: userData.attributes?.firstName || userData.firstName,
+                lastName: userData.attributes?.lastName || userData.lastName,
+                email: userData.attributes?.email || userData.email,
+                countryCode: userData.attributes?.countryCode || userData.countryCode || 'US',
+            }
+
+            console.log('Successfully parsed user data:', this.currentUser)
+
+            // Store user data
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('tidal_user', JSON.stringify(this.currentUser))
+            }
+
+            return this.currentUser
+
+        } catch (error) {
+            console.error('Error getting user profile:', error)
+            throw error
         }
-
-        const data = await response.json()
-        this.currentUser = {
-            id: data.data.id,
-            username: data.data.attributes.username,
-            firstName: data.data.attributes.firstName,
-            lastName: data.data.attributes.lastName,
-            email: data.data.attributes.email,
-            countryCode: data.data.attributes.countryCode,
-        }
-
-        // Store user data
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('tidal_user', JSON.stringify(this.currentUser))
-        }
-
-        return this.currentUser
     }
 
     // Search for a track on Tidal
