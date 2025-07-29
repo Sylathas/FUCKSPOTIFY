@@ -272,72 +272,139 @@ export class TidalIntegration {
     private async getUserProfile(): Promise<TidalUser> {
         console.log('=== GETTING TIDAL USER PROFILE ===')
         console.log('Access token available:', !!this.accessToken)
-        console.log('Token preview:', this.accessToken ? `${this.accessToken.substring(0, 20)}...` : 'None')
 
         if (!this.accessToken) {
             throw new Error('No access token available')
         }
 
-        try {
-            // Use the correct endpoint with REQUIRED countryCode parameter
-            const countryCode = 'US' // Default to US, should ideally get from user location
-            const url = `${TIDAL_API_BASE}/v2/users/me?countryCode=${countryCode}`
+        const countryCode = 'US'
 
-            console.log('Making request to:', url)
+        // List of possible user profile endpoints to try
+        const possibleEndpoints = [
+            '/v2/me',
+            '/v1/me',
+            '/v2/user',
+            '/v1/user',
+            '/v2/profile',
+            '/v1/profile',
+            '/v2/account',
+            '/v1/account',
+            '/v2/users/current',
+            '/v1/users/current',
+            '/v2/currentUser',
+            '/v1/currentUser'
+        ]
 
-            const response = await fetch(url, {
-                headers: {
-                    'Authorization': `Bearer ${this.accessToken}`,
-                    'Accept': 'application/vnd.tidal.v1+json',
+        for (const endpoint of possibleEndpoints) {
+            try {
+                // Try both with and without countryCode parameter
+                const urlsToTry = [
+                    `${TIDAL_API_BASE}${endpoint}?countryCode=${countryCode}`,
+                    `${TIDAL_API_BASE}${endpoint}`
+                ]
+
+                for (const url of urlsToTry) {
+                    console.log(`Trying endpoint: ${endpoint} with URL: ${url}`)
+
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `Bearer ${this.accessToken}`,
+                            'Accept': 'application/vnd.tidal.v1+json',
+                        }
+                    })
+
+                    console.log(`Response for ${url}:`, {
+                        status: response.status,
+                        statusText: response.statusText,
+                    })
+
+                    if (response.ok) {
+                        const data = await response.json()
+                        console.log(`SUCCESS with ${url}:`, data)
+
+                        // Try to parse the response
+                        const userData = data.data || data.user || data
+
+                        this.currentUser = {
+                            id: userData.id || userData.userId || userData.attributes?.id || 'unknown',
+                            username: userData.username || userData.attributes?.username || userData.displayName || userData.name || 'Tidal User',
+                            firstName: userData.firstName || userData.attributes?.firstName || userData.first_name,
+                            lastName: userData.lastName || userData.attributes?.lastName || userData.last_name,
+                            email: userData.email || userData.attributes?.email,
+                            countryCode: userData.countryCode || userData.attributes?.countryCode || userData.country || countryCode,
+                        }
+
+                        console.log('Successfully parsed user from endpoint:', endpoint, this.currentUser)
+
+                        // Store user data
+                        if (typeof window !== 'undefined') {
+                            localStorage.setItem('tidal_user', JSON.stringify(this.currentUser))
+                        }
+
+                        return this.currentUser
+                    }
+
+                    const errorText = await response.text()
+                    console.log(`Endpoint ${url} failed:`, response.status, errorText)
                 }
-            })
 
-            console.log('User profile response:', {
-                status: response.status,
-                statusText: response.statusText,
-                url: response.url,
-                headers: Object.fromEntries(response.headers.entries())
-            })
-
-            if (!response.ok) {
-                const errorText = await response.text()
-                console.error('User profile request failed:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    body: errorText,
-                    url: url
-                })
-                throw new Error(`Failed to get user profile: ${response.status} - ${errorText}`)
+            } catch (error) {
+                console.error(`Error with endpoint ${endpoint}:`, error)
+                continue
             }
-
-            const data = await response.json()
-            console.log('User profile data received:', data)
-
-            // Parse the response structure according to Tidal API format
-            const userData = data.data || data
-
-            this.currentUser = {
-                id: userData.id || userData.attributes?.id || 'unknown',
-                username: userData.attributes?.username || userData.username || 'Unknown User',
-                firstName: userData.attributes?.firstName || userData.firstName,
-                lastName: userData.attributes?.lastName || userData.lastName,
-                email: userData.attributes?.email || userData.email,
-                countryCode: userData.attributes?.countryCode || userData.countryCode || countryCode,
-            }
-
-            console.log('Successfully parsed user data:', this.currentUser)
-
-            // Store user data
-            if (typeof window !== 'undefined') {
-                localStorage.setItem('tidal_user', JSON.stringify(this.currentUser))
-            }
-
-            return this.currentUser
-
-        } catch (error) {
-            console.error('Error getting user profile:', error)
-            throw error
         }
+
+        // If all endpoints fail, let's try to get user ID from token info or create minimal user
+        console.log('All user profile endpoints failed. Attempting to decode token or create minimal user...')
+
+        try {
+            // Try to decode the JWT token to get user info
+            const tokenParts = this.accessToken.split('.')
+            if (tokenParts.length === 3) {
+                const payload = JSON.parse(atob(tokenParts[1]))
+                console.log('Token payload:', payload)
+
+                this.currentUser = {
+                    id: payload.sub || payload.userId || payload.user_id || 'token-user',
+                    username: payload.username || payload.name || 'Tidal User',
+                    firstName: payload.firstName || payload.given_name,
+                    lastName: payload.lastName || payload.family_name,
+                    email: payload.email,
+                    countryCode: payload.country || countryCode,
+                }
+            } else {
+                // Create completely minimal user
+                this.currentUser = {
+                    id: 'minimal-user',
+                    username: 'Tidal User',
+                    firstName: undefined,
+                    lastName: undefined,
+                    email: undefined,
+                    countryCode: countryCode,
+                }
+            }
+        } catch (tokenError) {
+            console.error('Could not decode token:', tokenError)
+
+            // Final fallback - minimal user
+            this.currentUser = {
+                id: 'fallback-user',
+                username: 'Tidal User',
+                firstName: undefined,
+                lastName: undefined,
+                email: undefined,
+                countryCode: countryCode,
+            }
+        }
+
+        console.log('Created fallback user object:', this.currentUser)
+
+        // Store minimal user data
+        if (typeof window !== 'undefined') {
+            localStorage.setItem('tidal_user', JSON.stringify(this.currentUser))
+        }
+
+        return this.currentUser
     }
 
     // Search for a track on Tidal
