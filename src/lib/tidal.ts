@@ -251,6 +251,8 @@ export class TidalIntegration {
         const tokenData = await response.json()
         console.log('Token received, storing...')
 
+        await this.discoverWorkingEndpoints()
+
         this.storeTokens(tokenData)
 
         // Clean up stored PKCE data from both storages
@@ -687,6 +689,189 @@ export class TidalIntegration {
         }
 
         console.log(`⚠️  Failed to add tracks to playlist ${playlistId} with any endpoint`)
+    }
+
+    async discoverWorkingEndpoints(): Promise<void> {
+        console.log('🚀 DISCOVERING WORKING TIDAL API ENDPOINTS...')
+
+        if (!this.accessToken) {
+            console.error('❌ No access token available for discovery')
+            return
+        }
+
+        console.log('Access token available:', !!this.accessToken)
+        console.log('Starting systematic endpoint discovery...')
+        console.log('='.repeat(80))
+
+        // Test endpoint helper
+        const testEndpoint = async (endpoint: string, method: 'GET' | 'POST' = 'GET', body?: object) => {
+            try {
+                const options: RequestInit = {
+                    method,
+                    headers: {
+                        'Authorization': `Bearer ${this.accessToken}`,
+                        'Accept': 'application/vnd.tidal.v1+json',
+                    }
+                }
+
+                if (method === 'POST' && body) {
+                    options.headers = {
+                        ...options.headers,
+                        'Content-Type': 'application/vnd.tidal.v1+json'
+                    }
+                    options.body = JSON.stringify(body)
+                }
+
+                const response = await fetch(`${TIDAL_API_BASE}${endpoint}`, options)
+                const responseText = await response.text()
+
+                let data = null
+                try {
+                    data = JSON.parse(responseText)
+                } catch (e) {
+                    data = responseText
+                }
+
+                return {
+                    endpoint,
+                    status: response.status,
+                    success: response.ok,
+                    data: response.ok ? data : undefined,
+                    error: !response.ok ? responseText : undefined
+                }
+            } catch (error) {
+                return {
+                    endpoint,
+                    status: 0,
+                    success: false,
+                    error: error instanceof Error ? error.message : String(error)
+                }
+            }
+        }
+
+        // 1. DISCOVER SEARCH ENDPOINTS
+        console.log('🔍 TESTING SEARCH ENDPOINTS...')
+        const searchEndpoints = [
+            '/v1/search?q=coldplay&countryCode=US',
+            '/v2/search?q=coldplay&countryCode=US',
+            '/v1/search?query=coldplay&countryCode=US',
+            '/v2/search?query=coldplay&countryCode=US',
+            '/v1/search?q=coldplay&type=tracks&countryCode=US',
+            '/v2/search?q=coldplay&type=tracks&countryCode=US',
+            '/v1/search/tracks?q=coldplay&countryCode=US',
+            '/v2/search/tracks?q=coldplay&countryCode=US',
+            '/v1/catalog/search?q=coldplay&countryCode=US',
+            '/v2/catalog/search?q=coldplay&countryCode=US',
+            '/v1/browse/search?q=coldplay&countryCode=US',
+            '/v2/browse/search?q=coldplay&countryCode=US'
+        ]
+
+        for (const endpoint of searchEndpoints) {
+            const result = await testEndpoint(endpoint)
+            if (result.success) {
+                console.log('✅ WORKING SEARCH:', endpoint)
+                console.log('   Sample response keys:', Object.keys(result.data || {}))
+                if (result.data?.tracks) {
+                    console.log('   🎵 Has tracks data!')
+                }
+                if (result.data?.albums) {
+                    console.log('   💿 Has albums data!')
+                }
+            } else if (result.status === 404) {
+                console.log('❌ 404:', endpoint)
+            } else if (result.status === 429) {
+                console.log('⚠️  Rate limited:', endpoint)
+                await new Promise(resolve => setTimeout(resolve, 2000))
+            } else {
+                console.log(`❌ ${result.status}:`, endpoint)
+            }
+            await new Promise(resolve => setTimeout(resolve, 300))
+        }
+
+        console.log('\n' + '='.repeat(80) + '\n')
+
+        // 2. DISCOVER PLAYLIST ENDPOINTS
+        console.log('🎵 TESTING PLAYLIST CREATION ENDPOINTS...')
+        const playlistEndpoints = [
+            '/v1/playlists?countryCode=US',
+            '/v2/playlists?countryCode=US',
+            '/v1/me/playlists?countryCode=US',
+            '/v2/me/playlists?countryCode=US',
+            '/v1/my/playlists?countryCode=US',
+            '/v2/my/playlists?countryCode=US',
+            '/v1/user/playlists?countryCode=US',
+            '/v2/user/playlists?countryCode=US',
+            '/v1/users/me/playlists?countryCode=US',
+            '/v2/users/me/playlists?countryCode=US'
+        ]
+
+        const testPlaylistData = {
+            data: {
+                attributes: {
+                    accessType: "PRIVATE",
+                    description: "API Discovery Test",
+                    name: "Test Playlist " + Date.now()
+                },
+                type: "playlists"
+            }
+        }
+
+        for (const endpoint of playlistEndpoints) {
+            const result = await testEndpoint(endpoint, 'POST', testPlaylistData)
+            if (result.success) {
+                console.log('✅ WORKING PLAYLIST CREATE:', endpoint)
+                console.log('   Response:', result.data)
+                console.log('   🎯 PLAYLIST CREATION WORKS!')
+            } else if (result.status === 404) {
+                console.log('❌ 404:', endpoint)
+            } else if (result.status === 429) {
+                console.log('⚠️  Rate limited:', endpoint)
+                await new Promise(resolve => setTimeout(resolve, 2000))
+            } else {
+                console.log(`❌ ${result.status}:`, endpoint)
+            }
+            await new Promise(resolve => setTimeout(resolve, 500))
+        }
+
+        console.log('\n' + '='.repeat(80) + '\n')
+
+        // 3. DISCOVER USER ENDPOINTS (that we haven't tried)
+        console.log('👤 TESTING USER PROFILE ENDPOINTS...')
+        const userEndpoints = [
+            '/v1/me?countryCode=US',
+            '/v2/me?countryCode=US',
+            '/v1/user?countryCode=US',
+            '/v2/user?countryCode=US',
+            '/v1/profile?countryCode=US',
+            '/v2/profile?countryCode=US',
+            '/v1/account?countryCode=US',
+            '/v2/account?countryCode=US',
+            '/v1/me',
+            '/v2/me',
+            '/v1/user',
+            '/v2/user'
+        ]
+
+        for (const endpoint of userEndpoints) {
+            const result = await testEndpoint(endpoint)
+            if (result.success) {
+                console.log('✅ WORKING USER:', endpoint)
+                console.log('   User data keys:', Object.keys(result.data || {}))
+            } else if (result.status === 404) {
+                console.log('❌ 404:', endpoint)
+            } else if (result.status === 429) {
+                console.log('⚠️  Rate limited:', endpoint)
+                await new Promise(resolve => setTimeout(resolve, 2000))
+            } else {
+                console.log(`❌ ${result.status}:`, endpoint)
+            }
+            await new Promise(resolve => setTimeout(resolve, 300))
+        }
+
+        console.log('\n' + '='.repeat(80) + '\n')
+        console.log('✅ ENDPOINT DISCOVERY COMPLETE!')
+        console.log('Look for ✅ WORKING entries above to find functional endpoints')
+        console.log('='.repeat(80))
     }
 
     // Main transfer function
