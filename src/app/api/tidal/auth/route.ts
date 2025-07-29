@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
 
         const requestBody = new URLSearchParams({
             grant_type: 'authorization_code',
-            client_id: TIDAL_CLIENT_ID,
+            client_id: 'w_Oa4Knu2E8xOsHk',
             code: code,
             redirect_uri: redirectUri,
             code_verifier: codeVerifier,  // PKCE requirement
