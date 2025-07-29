@@ -49,7 +49,7 @@ export interface SpotifyPlaylist {
     collaborative: boolean
     owner: {
         id: string
-        name: string | null
+        display_name: string | null
     }
     spotifyUrl: string
     tracks?: SpotifyTrack[] // Loaded separately

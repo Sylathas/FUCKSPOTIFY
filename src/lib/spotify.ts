@@ -364,7 +364,7 @@ export class SpotifyAuth {
                             collaborative: fullPlaylist.collaborative,
                             owner: {
                                 id: fullPlaylist.owner.id,
-                                name: fullPlaylist.owner.display_name || null
+                                display_name: fullPlaylist.owner.display_name || null
                             },
                             spotifyUrl: fullPlaylist.external_urls.spotify,
                         }
@@ -510,6 +510,69 @@ export class SpotifyAuth {
             console.error('Error fetching tracks:', error)
             throw error
         }
+    }
+
+    // NEW METHOD: Get tracks from a specific album
+    async getAlbumTracks(albumId: string): Promise<SpotifyTrack[]> {
+        if (!this.api) {
+            throw new Error('Not authenticated')
+        }
+
+        try {
+            const album = await this.api.albums.get(albumId, 'US')
+
+            // Get all tracks (handle pagination if album has more than 50 tracks)
+            const tracks: SpotifyTrack[] = []
+            let offset = 0
+            const limit = 50
+
+            while (offset < album.total_tracks) {
+                const response = await this.api.albums.tracks(albumId, 'US', limit, offset)
+
+                const trackBatch = response.items.map(track => ({
+                    id: track.id,
+                    name: track.name,
+                    artists: track.artists.map(artist => ({
+                        id: artist.id,
+                        name: artist.name
+                    })),
+                    album: {
+                        id: album.id,
+                        name: album.name,
+                        images: album.images,
+                        coverImage: album.images?.[0]?.url
+                    },
+                    duration: track.duration_ms,
+                    explicit: track.explicit,
+                    popularity: album.popularity || 0, // Album popularity as fallback
+                    previewUrl: track.preview_url || null,
+                    spotifyUrl: track.external_urls.spotify,
+                    isrc: undefined, // Simplified tracks don't include ISRC
+                    addedAt: undefined,
+                    addedBy: undefined,
+                    // Additional track info
+                    track_number: track.track_number,
+                    disc_number: track.disc_number
+                }))
+
+                tracks.push(...trackBatch)
+
+                if (response.items.length < limit) {
+                    break
+                }
+                offset += limit
+            }
+
+            return tracks
+        } catch (error) {
+            console.error(`Error fetching tracks for album ${albumId}:`, error)
+            throw error
+        }
+    }
+
+    // Get current access token (useful for other API calls)
+    getAccessToken(): string | null {
+        return localStorage.getItem('spotify_access_token')
     }
 
     // Logout

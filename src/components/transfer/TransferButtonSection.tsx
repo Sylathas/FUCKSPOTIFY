@@ -75,25 +75,79 @@ export default function TransferButtonSection({
             const { tracks, albums, playlists } = await fetchSelectedData()
 
             if (selectedPlatform === 'TIDAL') {
-                // Tidal transfer
+                // Check if user is authenticated with Tidal
+                if (!tidalIntegration.isAuthenticated()) {
+                    setIsTransferring(false)
+                    const shouldLogin = confirm('You need to log in to Tidal first. Would you like to log in now?')
+                    if (shouldLogin) {
+                        await tidalIntegration.redirectToTidalLogin()
+                    }
+                    return
+                }
+
+                // Prepare playlists for transfer
+                const playlistsToTransfer: SpotifyPlaylist[] = [...playlists]
+
+                // Create virtual playlists for individual tracks
+                playlistsToTransfer.push({
+                    id: 'virtual-tracks',
+                    name: 'My Liked Songs (from Spotify)',
+                    description: 'Individual tracks imported from Spotify',
+                    tracks: tracks,
+                    owner: {
+                        id: spotifyUser.id,
+                        display_name: spotifyUser.display_name
+                    },
+                    isPublic: false,
+                    images: [],
+                    coverImage: undefined,
+                    trackCount: tracks.length,
+                    collaborative: false,
+                    spotifyUrl: ''
+                })
+
+                // Create virtual playlists for albums (one playlist per album)
+                for (const album of albums) {
+                    // Fetch album tracks
+                    const albumTracks = await spotifyAuth.getAlbumTracks(album.id)
+
+                    playlistsToTransfer.push({
+                        id: `virtual-album-${album.id}`,
+                        name: `${album.name} - ${album.artists[0].name}`,
+                        description: `Album: ${album.name} by ${album.artists.map(a => a.name).join(', ')}`,
+                        tracks: albumTracks,
+                        owner: {
+                            id: spotifyUser.id,
+                            display_name: spotifyUser.display_name
+                        },
+                        isPublic: false,
+                        images: album.images,
+                        coverImage: undefined,
+                        trackCount: tracks.length,
+                        collaborative: false,
+                        spotifyUrl: ''
+                    })
+                }
+
+                // Transfer to Tidal with progress callback
                 const result = await tidalIntegration.transferToTidal(
-                    tracks,
-                    albums,
-                    playlists,
-                    (progress, status) => {
-                        setTransferProgress(progress)
-                        setTransferStatus(status)
+                    playlistsToTransfer,
+                    (progress) => {
+                        // Calculate overall progress
+                        const percentage = Math.round((progress.current / progress.total) * 100)
+                        setTransferProgress(percentage)
+                        setTransferStatus(progress.message)
                     }
                 )
 
                 // Show final result
-                const successCount = [
-                    ...result.results.tracks.filter(t => t.tidalUrl),
-                    ...result.results.albums.filter(a => a.tidalUrl),
-                    ...result.results.playlists.filter(p => p.tidalUrl)
-                ].length
+                const message = `Transfer Complete!\n\n` +
+                    `✓ Successfully transferred: ${result.success} playlists\n` +
+                    `✗ Failed: ${result.failed} playlists\n\n` +
+                    `Details:\n${result.details.slice(0, 10).join('\n')}` +
+                    (result.details.length > 10 ? `\n... and ${result.details.length - 10} more` : '')
 
-                alert(`Transfer Complete!\n${successCount}/${totalSelected} items successfully transferred to Tidal.`)
+                alert(message)
 
             } else if (selectedPlatform === 'BANDCAMP') {
                 // Bandcamp guide generation
@@ -134,10 +188,10 @@ export default function TransferButtonSection({
     return (
         <div
             className={`
-        relative bg-cover bg-center bg-no-repeat
-        flex items-center justify-center
-        ${isMobile ? 'h-[300px]' : 'h-[100%]'}
-      `}
+                relative bg-cover bg-center bg-no-repeat
+                flex items-center justify-center
+                ${isMobile ? 'h-[300px]' : 'h-[100%]'}
+            `}
             style={{
                 backgroundImage: "url('/Buttons/UI_Background.png')",
                 backgroundSize: '100% 100%'
@@ -167,12 +221,12 @@ export default function TransferButtonSection({
                 alt="Transfer"
                 onClick={handleTransfer}
                 className={`
-          ${isMobile ? 'w-[80%] h-[200px]' : 'w-[90%] h-auto'}
-          ${transferReady && !isTransferring
+                    ${isMobile ? 'w-[80%] h-[200px]' : 'w-[90%] h-auto'}
+                    ${transferReady && !isTransferring
                         ? 'cursor-pointer hover:opacity-80 hover:scale-105 transition-all'
                         : 'cursor-not-allowed'
                     }
-        `}
+                `}
                 title={
                     transferReady
                         ? `Transfer ${totalSelected} items to ${selectedPlatform}`
