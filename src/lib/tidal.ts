@@ -6,7 +6,8 @@ const TIDAL_REDIRECT_URI = process.env.NEXT_PUBLIC_TIDAL_REDIRECT_URI ||
     (typeof window !== 'undefined' ? `${window.location.origin}/tidal-callback` : 'http://localhost:3000/tidal-callback')
 
 const TIDAL_API_BASE = 'https://openapi.tidal.com'
-const TIDAL_AUTH_BASE = 'https://auth.tidal.com'
+const TIDAL_AUTH_BASE = 'https://login.tidal.com'
+const TIDAL_TOKEN_BASE = 'https://auth.tidal.com'
 
 // Required scopes for playlist creation and management
 const TIDAL_SCOPES = [
@@ -33,6 +34,33 @@ function generateRandomString(length: number): string {
         result += chars.charAt(Math.floor(Math.random() * chars.length))
     }
     return result
+}
+
+function generateCodeVerifier(): string {
+    // Generate a random string of 128 characters
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
+    let result = ''
+    for (let i = 0; i < 128; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return result
+}
+
+async function generateCodeChallenge(codeVerifier: string): Promise<string> {
+    // Create SHA256 hash of the code verifier
+    const encoder = new TextEncoder()
+    const data = encoder.encode(codeVerifier)
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data)
+
+    // Convert to base64url
+    const hashArray = new Uint8Array(hashBuffer)
+    const base64String = btoa(String.fromCharCode.apply(null, Array.from(hashArray)))
+
+    // Convert base64 to base64url
+    return base64String
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=/g, '')
 }
 
 export class TidalIntegration {
@@ -112,6 +140,8 @@ export class TidalIntegration {
         }
 
         const state = generateRandomString(16)
+        const codeVerifier = generateCodeVerifier()
+        const codeChallenge = await generateCodeChallenge(codeVerifier)
 
         // Store state for verification
         if (typeof window !== 'undefined') {
@@ -126,13 +156,17 @@ export class TidalIntegration {
             redirect_uri: TIDAL_REDIRECT_URI,
             scope: TIDAL_SCOPES,
             state: state,
+            code_challenge_method: 'S256',
+            code_challenge: codeChallenge
         })
 
-        const authUrl = `${TIDAL_AUTH_BASE}/v1/oauth2/authorize?${params.toString()}`
+        const authUrl = `https://login.tidal.com/authorize?${params.toString()}`
         console.log('Redirecting to Tidal OAuth:', authUrl)
 
         window.location.href = authUrl
     }
+
+
 
     // Step 2: Handle OAuth callback
     async handleCallback(code: string, state: string): Promise<TidalUser> {
