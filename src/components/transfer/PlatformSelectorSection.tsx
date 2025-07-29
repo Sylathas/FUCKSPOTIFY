@@ -20,7 +20,7 @@ export default function PlatformSelectorSection({
         { name: 'SOUNDCLOUD', image: '/Buttons/Soundcloud.png', implemented: false },
         { name: 'TIDAL', image: '/Buttons/Tidal.png', implemented: true },
         { name: 'YOUTUBE MUSIC', image: '/Buttons/YT.png', implemented: false },
-        { name: 'BANDCAMP', image: '/Buttons/Bandcamp.png', implemented: false }
+        { name: 'BANDCAMP', image: '/Buttons/Bandcamp.png', implemented: true }
     ]
 
     useEffect(() => {
@@ -61,7 +61,7 @@ export default function PlatformSelectorSection({
         tidalIntegration.logout()
         setTidalUser(null)
         if (selectedPlatform === 'TIDAL') {
-            onSelectPlatform('')
+            onSelectPlatform("")
         }
     }
 
