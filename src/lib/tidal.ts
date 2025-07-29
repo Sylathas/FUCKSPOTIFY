@@ -7,7 +7,7 @@ const TIDAL_REDIRECT_URI = process.env.NEXT_PUBLIC_TIDAL_REDIRECT_URI ||
 
 const TIDAL_API_BASE = 'https://api.tidal.com'
 const TIDAL_AUTH_BASE = 'https://login.tidal.com'
-const TIDAL_TOKEN_BASE = 'https://openapi.tidal.com'
+const TIDAL_TOKEN_BASE = 'https://api.tidal.com'
 
 // Required scopes for playlist creation and management
 const TIDAL_SCOPES = [
@@ -70,8 +70,7 @@ export class TidalIntegration {
     private tokenExpires: number | null = null;
     private currentUser: TidalUser | null = null;
 
-    // The API base for the official, documented API
-    private apiBase = 'https://openapi.tidal.com';
+    private apiBase = 'https://api.tidal.com';
 
     constructor() {
         this.loadStoredTokens();
