@@ -103,19 +103,30 @@ async def verify_tidal_login(request: LoginVerifyRequest):
 
 @app.post("/api/like/songs")
 async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = Header(...)):
-    token = authorization.split(" ")[1]; tidal_session = get_tidal_session(token); liked_count = 0
+    token = authorization.split(" ")[1]
+    tidal_session = get_tidal_session(token)
+    liked_count = 0
     for track_data in request.tracks:
         tidal_track = await tidal_search(track_data.dict(), tidal_session)
         if tidal_track:
             try:
                 await asyncio.to_thread(tidal_session.user.favorites.add_track, tidal_track.id)
-                liked_count += 1; print(f"Liked track: {track_data.name}")
-            except Exception as e: print(f"Failed to like track {track_data.name}: {e}")
+                liked_count += 1
+                print(f"Liked track: {track_data.name}")
+            except Exception as e:
+                # --- FIXED: More detailed error logging ---
+                print(f"--- FAILED TO LIKE TRACK: {track_data.name} ---")
+                print(f"Error Type: {type(e).__name__}")
+                print(f"Error Details: {e}")
+    
     return {"status": "success", "message": f"Successfully liked {liked_count}/{len(request.tracks)} songs."}
+
 
 @app.post("/api/add/albums")
 async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = Header(...)):
-    token = authorization.split(" ")[1]; tidal_session = get_tidal_session(token); added_count = 0
+    token = authorization.split(" ")[1]
+    tidal_session = get_tidal_session(token)
+    added_count = 0
     for album_data in request.albums:
         query = f"{album_data.name} {album_data.artists[0].name}"
         search_results = await asyncio.to_thread(tidal_session.search, query, models=[tidalapi.album.Album])
@@ -123,8 +134,14 @@ async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = He
             tidal_album_id = search_results['albums'][0].id
             try:
                 await asyncio.to_thread(tidal_session.user.favorites.add_album, tidal_album_id)
-                added_count += 1; print(f"Added album: {album_data.name}")
-            except Exception as e: print(f"Failed to add album {album_data.name}: {e}")
+                added_count += 1
+                print(f"Added album: {album_data.name}")
+            except Exception as e:
+                # --- FIXED: More detailed error logging ---
+                print(f"--- FAILED TO ADD ALBUM: {album_data.name} ---")
+                print(f"Error Type: {type(e).__name__}")
+                print(f"Error Details: {e}")
+    
     return {"status": "success", "message": f"Successfully added {added_count}/{len(request.albums)} albums."}
     
 # --- Playlist Transfer Endpoint & Background Task ---

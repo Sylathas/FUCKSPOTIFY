@@ -3,6 +3,7 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import List, Sequence, Set
 import tidalapi
+from tqdm.asyncio import tqdm as atqdm
 
 # Assuming cache.py and tidalapi_patch.py are in the same directory
 from cache import failure_cache, track_match_cache
