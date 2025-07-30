@@ -181,7 +181,7 @@ Thanks!`)
                                 This app is currently in Spotify's development mode, which means only pre-approved users can log in.
                             </p>
                             <p>
-                                <strong className="text-yellow-400">Why?</strong> Spotify requires manual approval for apps with... creative names like ours 😅
+                                <strong className="text-yellow-400">Why?</strong> Spotify requires manual approval for apps with... creative names like this lol
                             </p>
                             <p>
                                 <strong className="text-green-400">Solution:</strong> Send me your Spotify email and I'll add you to the approved users list!
