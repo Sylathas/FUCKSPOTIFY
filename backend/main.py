@@ -4,17 +4,18 @@ import uuid
 from fastapi import FastAPI, Header, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import tidalapi
-from tidalapi import Config # FIXED: Import the Config object
+from tidalapi import Config
 
 # Import your library functions
 from sync import sync_playlist, tidal_search
 
 # --- In-memory store for pending logins ---
-pending_logins: Dict[str, Any] = {}
+# FIXED: Store a tuple of (session, future) to keep track of the session object
+pending_logins: Dict[str, Tuple[tidalapi.Session, Any]] = {}
 
-# --- Pydantic Models ---
+# --- Pydantic Models (No changes here) ---
 class SpotifyArtist(BaseModel): name: str
 class SpotifyTrack(BaseModel): id: str; name: str; artists: List[SpotifyArtist]; duration: int; isrc: Optional[str] = None
 class SpotifyPlaylist(BaseModel): id: str; name: str; description: Optional[str] = None; tracks: Optional[List[SpotifyTrack]] = []
@@ -36,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Helper Function ---
+# --- Helper Function (No changes here) ---
 def get_tidal_session(token: str) -> tidalapi.Session:
     session = tidalapi.Session()
     session.load_oauth_session(session_id=None, token_type="Bearer", access_token=token)
@@ -47,7 +48,6 @@ def get_tidal_session(token: str) -> tidalapi.Session:
 # --- Authentication Endpoints ---
 @app.get("/api/tidal/initiate-login", response_model=LoginInitResponse)
 def initiate_tidal_login():
-    """Starts the Tidal device login flow and returns a URL for the user."""
     config_dict = None
     try:
         with open('config.yml', 'r') as f:
@@ -55,16 +55,17 @@ def initiate_tidal_login():
     except FileNotFoundError:
         pass
 
-    config_obj = Config() 
+    config_obj = Config()
     if config_dict:
         config_obj.max_concurrency = config_dict.get('max_concurrency', 10)
         config_obj.rate_limit = config_dict.get('rate_limit', 10)
     
-    session = tidalapi.Session(config=config_obj) 
-    
+    session = tidalapi.Session(config=config_obj)
     login, future = session.login_oauth()
     poll_key = str(uuid.uuid4())
-    pending_logins[poll_key] = future
+    
+    # --- FIXED: Store both the session and the future ---
+    pending_logins[poll_key] = (session, future)
     
     login_url = login.verification_uri_complete
     if not login_url.startswith('https://'):
@@ -74,17 +75,28 @@ def initiate_tidal_login():
 
 @app.post("/api/tidal/verify-login", response_model=LoginVerifyResponse)
 async def verify_tidal_login(request: LoginVerifyRequest):
-    future = pending_logins.get(request.poll_key)
-    if not future:
+    login_attempt = pending_logins.get(request.poll_key)
+    if not login_attempt:
         raise HTTPException(status_code=404, detail="Login session not found or expired.")
+
+    session, future = login_attempt
     if future.done():
         try:
-            session_data = future.result()
-            if request.poll_key in pending_logins: del pending_logins[request.poll_key]
-            return {"status": "completed", "access_token": session_data.access_token}
+            # future.result() will return True/False and raise errors
+            login_success = future.result()
+            if not login_success:
+                raise Exception("Login was not successful.")
+
+            # --- FIXED: Get the token from the stored session object ---
+            access_token = session.access_token
+            
+            if request.poll_key in pending_logins:
+                del pending_logins[request.poll_key]
+            return {"status": "completed", "access_token": access_token}
         except BaseException as e:
-            print(f"TIDAL LOGIN FAILED WITH A SEVERE ERROR: {type(e).__name__} - {e}")
-            if request.poll_key in pending_logins: del pending_logins[request.poll_key] 
+            print(f"TIDAL LOGIN FAILED: {type(e).__name__} - {e}")
+            if request.poll_key in pending_logins:
+                del pending_logins[request.poll_key] 
             raise HTTPException(status_code=500, detail="Tidal login process failed unexpectedly.")
     else:
         return {"status": "pending"}
