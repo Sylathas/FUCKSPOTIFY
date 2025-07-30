@@ -49,28 +49,57 @@ def match(tidal_track: tidalapi.Track, spotify_track: dict) -> bool:
 
 # --- NEW: Robust, Multi-Artist Search Function ---
 
-async def tidal_search(spotify_track: dict, tidal_session: tidalapi.Session) -> tidalapi.Track | None:
-    """Searches for a spotify track on Tidal, trying each artist for better accuracy."""
+async def tidal_search_batch(spotify_tracks: List[dict], tidal_session: tidalapi.Session, batch_size: int = 5, delay: float = 0.5):
+    """Search for multiple tracks in batches to avoid overwhelming the API."""
+    results = []
+    
+    for i in range(0, len(spotify_tracks), batch_size):
+        batch = spotify_tracks[i:i + batch_size]
+        batch_results = await asyncio.gather(
+            *[tidal_search_single(track, tidal_session) for track in batch],
+            return_exceptions=True
+        )
+        
+        # Handle any exceptions in batch results
+        for j, result in enumerate(batch_results):
+            if isinstance(result, Exception):
+                print(f"Search failed for '{batch[j]['name']}': {result}")
+                results.append(None)
+            else:
+                results.append(result)
+        
+        # Add delay between batches to avoid rate limiting
+        if i + batch_size < len(spotify_tracks):
+            await asyncio.sleep(delay)
+            
+    return results
+
+async def tidal_search_single(spotify_track: dict, tidal_session: tidalapi.Session) -> tidalapi.Track | None:
+    """Search for a single spotify track on Tidal."""
     track_name = simple(spotify_track['name'])
     
-    # Iterate through each artist listed on Spotify for the track
+    # Try each artist for better accuracy
     for artist in spotify_track.get('artists', []):
         artist_name = simple(artist['name'])
         query = f"{track_name} {artist_name}"
         
-        # Search Tidal with the constructed query
-        search_results = await asyncio.to_thread(
-            tidal_session.search, query, models=[tidalapi.media.Track]
-        )
-        
-        # Check all results against our robust 'match' function
-        for tidal_track in search_results['tracks']:
-            if match(tidal_track, spotify_track):
-                print(f"Found match for '{spotify_track['name']}': '{tidal_track.name}' by {tidal_track.artist.name}")
-                return tidal_track # Return the first good match
+        try:
+            search_results = await asyncio.to_thread(
+                tidal_session.search, query, models=[tidalapi.media.Track]
+            )
+            
+            # Check all results against our robust 'match' function
+            for tidal_track in search_results.get('tracks', []):
+                if match(tidal_track, spotify_track):
+                    print(f"✓ Found: '{spotify_track['name']}' → '{tidal_track.name}' by {tidal_track.artist.name}")
+                    return tidal_track
+                    
+        except Exception as e:
+            print(f"Search error for '{spotify_track['name']}': {e}")
+            continue
 
     # If no match was found after trying all artists
-    print(f"Could not find match for: {spotify_track['artists'][0]['name']} - {spotify_track['name']}")
+    print(f"✗ No match: {spotify_track['artists'][0]['name']} - {spotify_track['name']}")
     failure_cache.cache_match_failure(spotify_track['id'])
     return None
 
@@ -133,10 +162,11 @@ async def search_new_tracks_on_tidal(tidal_session: tidalapi.Session, spotify_tr
     
     task_description = f"Searching Tidal for {len(tracks_to_search)} tracks for playlist '{playlist_name}'"
     
-    search_results = await atqdm.gather(
-        *[tidal_search(track, tidal_session) for track in tracks_to_search],
-        desc=task_description
-    )
+    # Use batch processing with configurable batch size
+    batch_size = config.get('search_batch_size', 5)  # Default to 5 concurrent searches
+    search_delay = config.get('search_delay', 0.5)   # Default 500ms delay between batches
+    
+    search_results = await tidal_search_batch(tracks_to_search, tidal_session, batch_size, search_delay)
 
     for idx, spotify_track in enumerate(tracks_to_search):
         if search_results[idx]:
@@ -144,38 +174,50 @@ async def search_new_tracks_on_tidal(tidal_session: tidalapi.Session, spotify_tr
         else:
             print(f"Could not find match for: {spotify_track['artists'][0]['name']} - {spotify_track['name']}")
 
-# --- Main Sync Function ---
-
+# --- Main Sync Function (with better logging) ---
 async def sync_playlist(tidal_session: tidalapi.Session, playlist_data: dict, config: dict):
     """Syncs a single playlist's data (received from the frontend) to Tidal."""
     spotify_tracks = playlist_data.get('tracks', [])
     playlist_name = playlist_data.get('name', 'Untitled Playlist')
     playlist_description = playlist_data.get('description', '')
     
+    print(f"\n🎵 Starting sync for playlist: '{playlist_name}' ({len(spotify_tracks)} tracks)")
+    
     if not spotify_tracks:
-        print(f"Playlist '{playlist_name}' has no tracks. Skipping.")
+        print(f"❌ Playlist '{playlist_name}' has no tracks. Skipping.")
         return
         
+    print("📋 Loading existing Tidal playlists...")
     all_tidal_playlists = await get_all_playlists(tidal_session.user)
     tidal_playlist = next((p for p in all_tidal_playlists if p.name == playlist_name), None)
     
     if tidal_playlist:
-        print(f"Found existing Tidal playlist: '{playlist_name}'")
+        print(f"✓ Found existing Tidal playlist: '{playlist_name}'")
         old_tidal_tracks = await get_all_playlist_tracks(tidal_playlist)
     else:
-        print(f"Creating new Tidal playlist: '{playlist_name}'")
+        print(f"➕ Creating new Tidal playlist: '{playlist_name}'")
         tidal_playlist = tidal_session.user.create_playlist(playlist_name, playlist_description)
         old_tidal_tracks = []
 
+    print("🔍 Matching existing tracks...")
     populate_track_match_cache(spotify_tracks, old_tidal_tracks)
+    
+    print("🔎 Searching for new tracks on Tidal...")
     await search_new_tracks_on_tidal(tidal_session, spotify_tracks, playlist_name, config)
+    
     new_tidal_track_ids = get_tracks_for_new_tidal_playlist(spotify_tracks)
-
     old_tidal_track_ids = [t.id for t in old_tidal_tracks]
+    
     if new_tidal_track_ids == old_tidal_track_ids:
-        print(f"No changes for Tidal playlist '{playlist_name}'")
+        print(f"✅ No changes needed for Tidal playlist '{playlist_name}'")
         return
 
-    print(f"Updating Tidal playlist '{playlist_name}' with {len(new_tidal_track_ids)} tracks.")
-    clear_tidal_playlist(tidal_playlist)
-    add_multiple_tracks_to_playlist(tidal_playlist, new_tidal_track_ids)
+    print(f"🔄 Updating Tidal playlist '{playlist_name}' with {len(new_tidal_track_ids)} tracks...")
+    
+    if old_tidal_tracks:
+        clear_tidal_playlist(tidal_playlist)
+    
+    if new_tidal_track_ids:
+        add_multiple_tracks_to_playlist(tidal_playlist, new_tidal_track_ids)
+    
+    print(f"✅ Successfully synced playlist '{playlist_name}'!\n")

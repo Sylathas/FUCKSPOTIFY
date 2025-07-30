@@ -1,3 +1,19 @@
-# Settings for API call rate limiting
-max_concurrency: 10
-rate_limit: 10
+
+# Tidal API Configuration
+max_concurrency: 5          # Maximum concurrent API requests (reduced from 10)
+rate_limit: 10              # Rate limit for API requests per second
+
+# Search Optimization Settings
+search_batch_size: 3        # Number of tracks to search simultaneously (reduced for memory)
+search_delay: 0.8           # Delay between search batches in seconds (increased)
+
+# Playlist Processing Settings  
+playlist_chunk_size: 15     # Number of tracks to add/remove per API call
+track_fetch_limit: 50       # Number of tracks to fetch per pagination request
+
+# Performance Tuning
+enable_caching: true        # Enable track matching cache
+cache_expiry: 3600          # Cache expiry time in seconds (1 hour)
+request_timeout: 30         # HTTP request timeout in seconds
+retry_attempts: 3           # Number of retry attempts for failed requests
+retry_delay: 2              # Delay between retries in seconds
