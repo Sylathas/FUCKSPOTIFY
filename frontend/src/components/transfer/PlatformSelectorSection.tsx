@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { tidalIntegration } from '@/lib/tidal'
 
 interface PlatformSelectorSectionProps {
     isMobile: boolean
@@ -12,7 +11,6 @@ export default function PlatformSelectorSection({
     selectedPlatform,
     onSelectPlatform
 }: PlatformSelectorSectionProps) {
-    const [tidalUser, setTidalUser] = useState<any>(null)
     const [isCheckingTidalAuth, setIsCheckingTidalAuth] = useState(true)
 
     const platforms = [
@@ -23,49 +21,14 @@ export default function PlatformSelectorSection({
         { name: 'BANDCAMP', image: '/Buttons/Bandcamp.png', implemented: true }
     ]
 
-    useEffect(() => {
-        // Check if user is already logged into Tidal
-        const checkTidalAuth = () => {
-            if (tidalIntegration.isAuthenticated()) {
-                const user = tidalIntegration.getCurrentUser()
-                setTidalUser(user)
-            }
-            setIsCheckingTidalAuth(false)
-        }
-
-        checkTidalAuth()
-    }, [])
-
     const handlePlatformClick = async (platformName: string) => {
-        if (platformName === 'TIDAL') {
-            console.log('Tidal Environment Check:', {
-                clientId: process.env.NEXT_PUBLIC_TIDAL_CLIENT_ID ? 'Set' : 'Missing',
-                redirectUri: process.env.NEXT_PUBLIC_TIDAL_REDIRECT_URI || 'Default used'
-            })
-            if (!tidalUser) {
-                try {
-                    await tidalIntegration.redirectToTidalLogin()
-                } catch (error) {
-                    console.error('Error initiating Tidal login:', error)
-                    alert('Failed to start Tidal login. Please check your configuration.')
-                }
-                return
-            }
-        } else if (!platforms.find(p => p.name === platformName)?.implemented) {
+        if (!platforms.find(p => p.name === platformName)?.implemented) {
             // Platform not implemented yet
             alert(`${platformName} integration coming soon!`)
             return
         }
 
         onSelectPlatform(platformName)
-    }
-
-    const handleTidalLogout = () => {
-        tidalIntegration.logout()
-        setTidalUser(null)
-        if (selectedPlatform === 'TIDAL') {
-            onSelectPlatform("")
-        }
     }
 
     return (
@@ -83,8 +46,6 @@ export default function PlatformSelectorSection({
             <div className="flex-1 flex flex-col justify-center space-y-2 w-full">
                 {platforms.map((platform) => {
                     const isSelected = selectedPlatform === platform.name
-                    const isTidal = platform.name === 'TIDAL'
-                    const isLoggedIntoTidal = isTidal && tidalUser
 
                     return (
                         <div key={platform.name} className="relative">
@@ -103,24 +64,14 @@ export default function PlatformSelectorSection({
                   ${isMobile ? 'max-h-9' : 'max-h-10'}
                 `}
                                 title={
-                                    isTidal
-                                        ? isLoggedIntoTidal
-                                            ? `Logged in as ${tidalUser.username || tidalUser.firstName || 'User'}`
-                                            : 'Click to log in to Tidal'
-                                        : platform.implemented
-                                            ? `Select ${platform.name}`
-                                            : `${platform.name} - Coming Soon`
+                                    platform.implemented
+                                        ? `Select ${platform.name}`
+                                        : `${platform.name} - Coming Soon`
                                 }
                             />
 
-                            {/* Tidal user indicator */}
-                            {isTidal && isLoggedIntoTidal && (
-                                <div className="absolute top-0 right-0 w-3 h-3 bg-green-500 rounded-full border border-white"
-                                    title={`Logged in as ${tidalUser.username || tidalUser.firstName || 'User'}`} />
-                            )}
-
                             {/* Coming soon indicator for unimplemented platforms */}
-                            {!platform.implemented && !isTidal && (
+                            {!platform.implemented && (
                                 <div className="absolute inset-0 flex items-center justify-center">
                                     <span className="text-xs text-white bg-black bg-opacity-75 px-1 rounded">
                                         Soon
@@ -131,19 +82,6 @@ export default function PlatformSelectorSection({
                     )
                 })}
             </div>
-
-            {/* Tidal logout button (only shown when logged in) */}
-            {tidalUser && (
-                <div className="mt-2 w-full">
-                    <button
-                        onClick={handleTidalLogout}
-                        className="w-full text-xs text-red-400 hover:text-red-300 transition-colors bg-black bg-opacity-50 py-1 rounded"
-                        title="Logout from Tidal"
-                    >
-                        Logout Tidal
-                    </button>
-                </div>
-            )}
 
             {/* Status indicator */}
             {isCheckingTidalAuth && (

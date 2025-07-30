@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import LandingSection from '../components/landing/LandingSection'
 import TransferUI from '../components/transfer/TransferUI'
-import TidalDebugPanel from '@/components/TidalDebugPanel'
 
 export default function HomePage() {
   const [isMobile, setIsMobile] = useState(false)
@@ -45,7 +44,6 @@ export default function HomePage() {
       {/* Section 3: Disclaimer - just empty space, background shows disclaimer */}
       <section id="disclaimer" className="relative" style={{ minHeight: `${isMobile ? '800px' : '50vh'}` }}>
       </section>
-      <TidalDebugPanel />
     </div>
   )
 }
