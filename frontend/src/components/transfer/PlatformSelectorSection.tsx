@@ -12,6 +12,8 @@ export default function PlatformSelectorSection({
     onSelectPlatform
 }: PlatformSelectorSectionProps) {
     const [isCheckingTidalAuth, setIsCheckingTidalAuth] = useState(true)
+    const [isTidalLoggedIn, setIsTidalLoggedIn] = useState(false);
+    const [isLoggingIn, setIsLoggingIn] = useState(false);
 
     const platforms = [
         { name: 'APPLE MUSIC', image: '/Buttons/Apple.png', implemented: false },
@@ -21,13 +23,62 @@ export default function PlatformSelectorSection({
         { name: 'BANDCAMP', image: '/Buttons/Bandcamp.png', implemented: true }
     ]
 
+    const handleTidalLogin = async () => {
+        setIsLoggingIn(true);
+        try {
+            // 1. Get the login URL from our backend
+            const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/tidal/initiate-login`);
+            const { login_url, poll_key } = await res.json();
+
+            // 2. Open the login page for the user
+            window.open(login_url, '_blank');
+
+            // 3. Poll our backend to see if the user has finished
+            const pollInterval = setInterval(async () => {
+                const verifyRes = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_API_URL}/api/tidal/verify-login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ poll_key: poll_key }),
+                });
+                const verifyData = await verifyRes.json();
+
+                if (verifyData.status === 'completed') {
+                    clearInterval(pollInterval);
+                    localStorage.setItem('tidal_access_token', verifyData.access_token);
+                    setIsTidalLoggedIn(true);
+                    setIsLoggingIn(false);
+                }
+            }, 3000);
+
+        } catch (error) {
+            console.error("Tidal login failed", error);
+            alert("Tidal login failed. Please try again.");
+            setIsLoggingIn(false);
+        }
+    };
+
+    const handleTidalLogout = async () => {
+        localStorage.removeItem('tidal_access_token');
+        setIsTidalLoggedIn(false);
+    };
+
+    // On component load, check if we already have a token in localStorage
+    useEffect(() => {
+        const token = localStorage.getItem('tidal_access_token');
+        if (token) {
+            setIsTidalLoggedIn(true);
+        }
+    }, []);
+
     const handlePlatformClick = async (platformName: string) => {
-        if (!platforms.find(p => p.name === platformName)?.implemented) {
+        if (platformName === 'TIDAL' && !isTidalLoggedIn) {
+            handleTidalLogin();
+            return; // Don't select the platform until login is complete
+        } else if (!platforms.find(p => p.name === platformName)?.implemented) {
             // Platform not implemented yet
             alert(`${platformName} integration coming soon!`)
             return
         }
-
         onSelectPlatform(platformName)
     }
 
@@ -45,29 +96,46 @@ export default function PlatformSelectorSection({
             {/* Platform buttons */}
             <div className="flex-1 flex flex-col justify-center space-y-2 w-full">
                 {platforms.map((platform) => {
-                    const isSelected = selectedPlatform === platform.name
+                    const isSelected = selectedPlatform === platform.name;
+                    const isTidal = platform.name === 'TIDAL';
+
+                    // --- Define dynamic properties for the Tidal button ---
+                    let imageSrc = platform.image;
+                    let onClickAction = () => handlePlatformClick(platform.name);
+                    let titleText = platform.implemented ? `Select ${platform.name}` : `${platform.name} - Coming Soon`;
+                    let isDisabled = !platform.implemented || (isTidal && isLoggingIn);
+
+                    if (isTidal) {
+                        if (isLoggingIn) {
+                            titleText = 'Waiting for authorization in other tab...';
+                        } else if (isTidalLoggedIn) {
+                            imageSrc = '/Buttons/Tidal_Logout.png';
+                            onClickAction = handleTidalLogout;
+                            titleText = 'Logged in to Tidal. Click to logout.';
+                        } else {
+                            // State: Not logged in, ready to start
+                            titleText = 'Click to login to Tidal';
+                        }
+                    }
 
                     return (
                         <div key={platform.name} className="relative">
                             <img
-                                src={platform.image}
+                                src={imageSrc}
                                 alt={platform.name}
-                                onClick={() => handlePlatformClick(platform.name)}
+                                onClick={isDisabled ? undefined : onClickAction}
                                 className={`
-                  w-full h-auto cursor-pointer transition-all
-                  ${isSelected
+                                    w-full h-auto transition-all
+                                    ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                                    ${isSelected
                                         ? 'brightness-125 scale-105'
                                         : platform.implemented
                                             ? 'hover:brightness-110 hover:scale-102'
-                                            : 'opacity-50 cursor-not-allowed'
+                                            : ''
                                     }
-                  ${isMobile ? 'max-h-9' : 'max-h-10'}
-                `}
-                                title={
-                                    platform.implemented
-                                        ? `Select ${platform.name}`
-                                        : `${platform.name} - Coming Soon`
-                                }
+                                    ${isMobile ? 'max-h-9' : 'max-h-10'}
+                                `}
+                                title={titleText}
                             />
 
                             {/* Coming soon indicator for unimplemented platforms */}
@@ -83,7 +151,9 @@ export default function PlatformSelectorSection({
                 })}
             </div>
 
-            {/* Status indicator */}
+            {/* Remove the separate logout button if you wish, as it's now handled by the main Tidal button */}
+
+            {/* Status indicator can be removed or kept, as the button itself now shows the loading state */}
             {isCheckingTidalAuth && (
                 <div className="absolute bottom-2 right-2">
                     <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />

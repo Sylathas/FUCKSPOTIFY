@@ -70,15 +70,28 @@ export default function TransferButtonSection({
             playlist.tracks = playlistTracks;
         }
 
+        const tidalToken = localStorage.getItem('tidal_access_token');
+        if (selectedPlatform === 'TIDAL' && !tidalToken) {
+            alert('Please log in to Tidal first!');
+            setIsTransferring(false);
+            return;
+        }
+
         try {
             if (selectedPlatform === 'TIDAL') {
+                // For each fetch call to your backend, add the Authorization header
+                const headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${tidalToken}`
+                };
+
                 const results = [];
                 // --- TIDAL LOGIC (CALLING THE BACKEND) ---
                 if (playlistsToProcess.length > 0) {
                     setTransferStatus('Sending playlists to server...');
                     const res = await fetch(`${BACKEND_API_URL}/api/transfer/playlists`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: headers,
                         body: JSON.stringify({ playlists: playlistsToProcess })
                     });
                     results.push(`Playlists: ${(await res.json()).message}`);
@@ -87,7 +100,7 @@ export default function TransferButtonSection({
                     setTransferStatus('Sending liked songs to server...');
                     const res = await fetch(`${BACKEND_API_URL}/api/like/songs`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: headers,
                         body: JSON.stringify({ tracks: tracksToProcess })
                     });
                     results.push(`Liked Songs: ${(await res.json()).message}`);
@@ -96,7 +109,7 @@ export default function TransferButtonSection({
                     setTransferStatus('Sending albums to server...');
                     const res = await fetch(`${BACKEND_API_URL}/api/add/albums`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: headers,
                         body: JSON.stringify({ albums: albumsToProcess })
                     });
                     results.push(`Albums: ${(await res.json()).message}`);
