@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { tidalIntegration } from '@/lib/tidal'
 import SpotifyLoginSection from './SpotifyLoginSection'
 import MusicSelectorSection from './MusicSelectorSection'
 import PlatformSelectorSection from './PlatformSelectorSection'
@@ -29,25 +28,6 @@ export default function TransferUI() {
         window.addEventListener('resize', checkMobile)
 
         return () => window.removeEventListener('resize', checkMobile)
-    }, [])
-
-    useEffect(() => {
-        // Check Tidal authentication status on component mount
-        const checkTidalAuth = () => {
-            if (tidalIntegration.isAuthenticated()) {
-                setTidalAuthState('authenticated')
-            } else {
-                setTidalAuthState('unauthenticated')
-            }
-        }
-
-        checkTidalAuth()
-
-        // Set up an interval to periodically check Tidal auth status
-        // This helps when the user returns from the OAuth flow
-        const authCheckInterval = setInterval(checkTidalAuth, 2000)
-
-        return () => clearInterval(authCheckInterval)
     }, [])
 
     // Clear platform selection if Tidal becomes unauthenticated

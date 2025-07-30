@@ -73,8 +73,12 @@ app.add_middleware(
 async def like_songs_on_tidal(request: LikeSongsRequest):
     print(f"Received request to like {len(request.tracks)} songs.")
     
-    # FIXED: Run the blocking 'open_tidal_session' in a separate thread
-    tidal_session = await asyncio.to_thread(open_tidal_session)
+    # --- Load config.yml here ---
+    with open('config.yml', 'r') as f:
+        config = yaml.safe_load(f)
+    
+    # --- Pass the config object to the function ---
+    tidal_session = await asyncio.to_thread(open_tidal_session, config=config)
     
     if not tidal_session.check_login():
         return {"status": "error", "message": "Tidal login required."}
@@ -98,8 +102,12 @@ async def like_songs_on_tidal(request: LikeSongsRequest):
 async def add_albums_to_tidal(request: AddAlbumsRequest):
     print(f"Received request to add {len(request.albums)} albums.")
     
-    # FIXED: Run the blocking 'open_tidal_session' in a separate thread
-    tidal_session = await asyncio.to_thread(open_tidal_session)
+   # --- Load config.yml here ---
+    with open('config.yml', 'r') as f:
+        config = yaml.safe_load(f)
+
+    # --- Pass the config object to the function ---
+    tidal_session = await asyncio.to_thread(open_tidal_session, config=config)
 
     if not tidal_session.check_login():
         return {"status": "error", "message": "Tidal login required."}
@@ -107,7 +115,7 @@ async def add_albums_to_tidal(request: AddAlbumsRequest):
     added_count = 0
     for album_data in request.albums:
         query = f"{album_data.name} {album_data.artists[0].name}"
-        # FIXED: Run the blocking 'search' and 'add_album' calls in separate threads
+        # Run the blocking 'search' and 'add_album' calls in separate threads
         search_results = await asyncio.to_thread(tidal_session.search, query, models=[tidalapi.album.Album])
         if search_results['albums']:
             tidal_album_id = search_results['albums'][0].id
