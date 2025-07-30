@@ -99,18 +99,23 @@ async def verify_tidal_login(request: LoginVerifyRequest):
         raise HTTPException(status_code=404, detail="Login session not found or expired.")
 
     if future.done():
-        # --- try/except block to handle login failures ---
+        # --- FINAL FIX: Catch BaseException to trap everything, including system exits ---
         try:
             session_data = future.result()
-            del pending_logins[request.poll_key] # Clean up successful login
+            # Clean up the successful login from our temporary store
+            if request.poll_key in pending_logins:
+                del pending_logins[request.poll_key]
             return {
                 "status": "completed",
                 "access_token": session_data.access_token,
             }
-        except Exception as e:
-            print(f"TIDAL LOGIN FAILED: {e}")
-            del pending_logins[request.poll_key] # Clean up failed login
-            raise HTTPException(status_code=500, detail="Tidal login failed or was cancelled.")
+        except BaseException as e: # This is the key change
+            # This will catch ANY error, including SystemExit
+            print(f"TIDAL LOGIN FAILED WITH A SEVERE ERROR: {type(e).__name__} - {e}")
+            # Clean up the failed login from our temporary store
+            if request.poll_key in pending_logins:
+                del pending_logins[request.poll_key] 
+            raise HTTPException(status_code=500, detail="Tidal login process failed unexpectedly.")
     else:
         return {"status": "pending"}
 
