@@ -14,6 +14,8 @@ export default function SpotifyLoginSection({
 }: SpotifyLoginSectionProps) {
     const [isCheckingAuth, setIsCheckingAuth] = useState(false)
     const [authError, setAuthError] = useState<string | null>(null)
+    const [showDevModeNotice, setShowDevModeNotice] = useState(false)
+    const [userEmail, setUserEmail] = useState('')
 
     // Check for existing authentication when component loads
     useEffect(() => {
@@ -29,20 +31,17 @@ export default function SpotifyLoginSection({
             try {
                 console.log('Initializing Spotify auth...')
 
-                // Check if we just returned from mobile login
                 const mobileLoginStarted = localStorage.getItem('spotify_login_started')
                 if (mobileLoginStarted && isMobile) {
                     console.log('Detected mobile login return, checking for tokens...')
                     localStorage.removeItem('spotify_login_started')
                 }
 
-                // First check localStorage for user from callback
                 const storedUser = localStorage.getItem('spotify_user')
                 if (storedUser) {
                     console.log('Found stored user from callback')
                     try {
                         const user = JSON.parse(storedUser)
-                        // Verify this user is still valid by checking tokens
                         const existingUser = await spotifyAuth.checkExistingLogin()
                         if (existingUser) {
                             console.log('Stored user is valid:', user.name)
@@ -56,7 +55,6 @@ export default function SpotifyLoginSection({
                         localStorage.removeItem('spotify_user')
                     }
                 } else {
-                    // Check if we have valid tokens without stored user data
                     console.log('No stored user, checking for valid tokens...')
                     const existingUser = await spotifyAuth.checkExistingLogin()
                     if (existingUser) {
@@ -70,7 +68,6 @@ export default function SpotifyLoginSection({
             } catch (error) {
                 console.error('Auth initialization error:', error)
                 setAuthError(`Auth check failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-                // Clear potentially corrupted data
                 spotifyAuth.logout()
                 localStorage.removeItem('spotify_user')
             } finally {
@@ -81,30 +78,23 @@ export default function SpotifyLoginSection({
         initializeAuth()
     }, [onLogin, spotifyUser, isMobile])
 
-    // Enhanced mobile-friendly login handler
     const handleLogin = async () => {
+        // Show development mode notice instead of trying to login
+        setShowDevModeNotice(true)
+    }
+
+    const handleActualLogin = async () => {
         try {
             console.log('Starting Spotify login...')
             setAuthError(null)
+            setShowDevModeNotice(false)
 
-            // Clear any existing data first
             spotifyAuth.logout()
             localStorage.removeItem('spotify_user')
 
-            console.log('Environment check:', {
-                clientId: process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ? 'Set' : 'Missing',
-                redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI || 'Default',
-                isMobile: isMobile,
-                userAgent: navigator.userAgent
-            })
-
-            // Mobile-specific handling
             if (isMobile) {
-                // Store a flag to help with mobile return flow
                 localStorage.setItem('spotify_login_started', 'true')
                 localStorage.setItem('spotify_login_timestamp', Date.now().toString())
-
-                // Add a small delay to ensure localStorage is written
                 await new Promise(resolve => setTimeout(resolve, 100))
             }
 
@@ -112,7 +102,6 @@ export default function SpotifyLoginSection({
         } catch (error) {
             console.error('Login failed:', error)
             setAuthError(`Login failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-            // Clean up mobile flags on error
             localStorage.removeItem('spotify_login_started')
             localStorage.removeItem('spotify_login_timestamp')
         }
@@ -128,19 +117,39 @@ export default function SpotifyLoginSection({
         setAuthError(null)
     }
 
-    // FIXED: Single button that shows different images and handles both login/logout
     const handleButtonClick = () => {
-        if (isCheckingAuth) return // Don't allow clicks while checking auth
+        if (isCheckingAuth) return
 
         if (spotifyUser) {
             handleLogout()
         } else {
-            handleLogin()
+            handleLogin() // This now shows the notice first
         }
     }
 
-    // Determine which image to show
-    const buttonImage = spotifyUser ? "/Buttons/Logged.png" : "/Buttons/Login.png"
+    const handleRequestAccess = () => {
+        if (userEmail.trim()) {
+            // Create mailto link for easy contact
+            const subject = encodeURIComponent('FuckSpotify App Access Request')
+            const body = encodeURIComponent(`Hi!
+
+I'd like access to the FuckSpotify music transfer app.
+
+My Spotify email: ${userEmail.trim()}
+
+Please add me to the allowed users list.
+
+Thanks!`)
+
+            const mailtoLink = `mailto:abate.niccolo@gmail.com?subject=${subject}&body=${body}`
+            window.open(mailtoLink)
+
+            setShowDevModeNotice(false)
+            setUserEmail('')
+        }
+    }
+
+    const buttonImage = spotifyUser ? "/Buttons/Logout.png" : "/Buttons/Login.png"
     const buttonAlt = spotifyUser ? "Logout from Spotify" : "Login to Spotify"
     const buttonTitle = spotifyUser
         ? `Logged in as ${spotifyUser.name} - Click to logout`
@@ -158,6 +167,74 @@ export default function SpotifyLoginSection({
                 backgroundSize: '100% 100%'
             }}
         >
+            {/* Development Mode Notice Modal */}
+            {showDevModeNotice && (
+                <div className="absolute inset-0 bg-black bg-opacity-90 flex items-center justify-center z-20 p-4">
+                    <div className="bg-gray-900 rounded-lg p-6 max-w-md w-full border border-yellow-600">
+                        <div className="text-center mb-4">
+                            <div className="text-4xl mb-2">⚠️</div>
+                            <h3 className="text-yellow-400 font-bold text-lg">App in Development Mode</h3>
+                        </div>
+
+                        <div className="text-gray-300 text-sm space-y-3 mb-6">
+                            <p>
+                                This app is currently in Spotify's development mode, which means only pre-approved users can log in.
+                            </p>
+                            <p>
+                                <strong className="text-yellow-400">Why?</strong> Spotify requires manual approval for apps with... creative names like ours 😅
+                            </p>
+                            <p>
+                                <strong className="text-green-400">Solution:</strong> Send me your Spotify email and I'll add you to the approved users list!
+                            </p>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-gray-300 text-sm mb-2">
+                                    Your Spotify email address:
+                                </label>
+                                <input
+                                    type="email"
+                                    value={userEmail}
+                                    onChange={(e) => setUserEmail(e.target.value)}
+                                    placeholder="your@email.com"
+                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white text-sm"
+                                />
+                            </div>
+
+                            <div className="flex space-x-2">
+                                <button
+                                    onClick={handleRequestAccess}
+                                    disabled={!userEmail.trim()}
+                                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded text-sm"
+                                >
+                                    📧 Request Access
+                                </button>
+                                <button
+                                    onClick={handleActualLogin}
+                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
+                                >
+                                    🤞 Try Anyway
+                                </button>
+                            </div>
+
+                            <button
+                                onClick={() => setShowDevModeNotice(false)}
+                                className="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-gray-700">
+                            <p className="text-gray-400 text-xs text-center">
+                                💡 Make sure to use the same email as your Spotify account
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Loading indicator during auth check */}
             {isCheckingAuth && (
                 <div className="absolute top-2 right-2">
@@ -178,7 +255,7 @@ export default function SpotifyLoginSection({
                 </div>
             )}
 
-            {/* FIXED: Single button that changes image based on login state */}
+            {/* Main login/logout button */}
             <img
                 src={buttonImage}
                 alt={buttonAlt}
