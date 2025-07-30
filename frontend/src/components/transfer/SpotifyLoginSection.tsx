@@ -29,6 +29,13 @@ export default function SpotifyLoginSection({
             try {
                 console.log('Initializing Spotify auth...')
 
+                // Check if we just returned from mobile login
+                const mobileLoginStarted = localStorage.getItem('spotify_login_started')
+                if (mobileLoginStarted && isMobile) {
+                    console.log('Detected mobile login return, checking for tokens...')
+                    localStorage.removeItem('spotify_login_started')
+                }
+
                 // First check localStorage for user from callback
                 const storedUser = localStorage.getItem('spotify_user')
                 if (storedUser) {
@@ -72,8 +79,9 @@ export default function SpotifyLoginSection({
         }
 
         initializeAuth()
-    }, [onLogin, spotifyUser])
+    }, [onLogin, spotifyUser, isMobile])
 
+    // Enhanced mobile-friendly login handler
     const handleLogin = async () => {
         try {
             console.log('Starting Spotify login...')
@@ -85,13 +93,28 @@ export default function SpotifyLoginSection({
 
             console.log('Environment check:', {
                 clientId: process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID ? 'Set' : 'Missing',
-                redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI || 'Default'
+                redirectUri: process.env.NEXT_PUBLIC_REDIRECT_URI || 'Default',
+                isMobile: isMobile,
+                userAgent: navigator.userAgent
             })
+
+            // Mobile-specific handling
+            if (isMobile) {
+                // Store a flag to help with mobile return flow
+                localStorage.setItem('spotify_login_started', 'true')
+                localStorage.setItem('spotify_login_timestamp', Date.now().toString())
+
+                // Add a small delay to ensure localStorage is written
+                await new Promise(resolve => setTimeout(resolve, 100))
+            }
 
             await spotifyAuth.redirectToSpotifyLogin()
         } catch (error) {
             console.error('Login failed:', error)
             setAuthError(`Login failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+            // Clean up mobile flags on error
+            localStorage.removeItem('spotify_login_started')
+            localStorage.removeItem('spotify_login_timestamp')
         }
     }
 
@@ -99,9 +122,29 @@ export default function SpotifyLoginSection({
         console.log('Logging out...')
         spotifyAuth.logout()
         localStorage.removeItem('spotify_user')
+        localStorage.removeItem('spotify_login_started')
+        localStorage.removeItem('spotify_login_timestamp')
         onLogin(null)
         setAuthError(null)
     }
+
+    // FIXED: Single button that shows different images and handles both login/logout
+    const handleButtonClick = () => {
+        if (isCheckingAuth) return // Don't allow clicks while checking auth
+
+        if (spotifyUser) {
+            handleLogout()
+        } else {
+            handleLogin()
+        }
+    }
+
+    // Determine which image to show
+    const buttonImage = spotifyUser ? "/Buttons/Logout.png" : "/Buttons/Login.png"
+    const buttonAlt = spotifyUser ? "Logout from Spotify" : "Login to Spotify"
+    const buttonTitle = spotifyUser
+        ? `Logged in as ${spotifyUser.name} - Click to logout`
+        : (isCheckingAuth ? 'Checking authentication...' : 'Login to Spotify')
 
     return (
         <div
@@ -135,41 +178,25 @@ export default function SpotifyLoginSection({
                 </div>
             )}
 
-            {/* Login Button Image */}
-            {spotifyUser ? (
-                <>
-                    <img
-                        src="/Buttons/Logged.png"
-                        alt="Spotify Connected"
-                        className={`
-                            ${isMobile ? 'w-[90%] h-auto' : 'w-[90%] h-[20%]'}
-                            cursor-pointer hover:opacity-80 transition-opacity
-                        `}
-                        title={`Logged in as ${spotifyUser.name}`}
-                    />
-                    {/* Logout option */}
-                    <button
-                        onClick={handleLogout}
-                        className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 
-                                 text-xs text-red-400 hover:text-red-300 transition-colors
-                                 bg-black bg-opacity-50 px-2 py-1 rounded"
-                        title="Logout from Spotify"
-                    >
-                        Logout
-                    </button>
-                </>
-            ) : (
-                <img
-                    src="/Buttons/Login.png"
-                    alt="Login to Spotify"
-                    onClick={handleLogin}
-                    className={`
-                        ${isMobile ? 'w-[80%] h-auto' : 'w-[90%] h-[20%]'}
-                        cursor-pointer hover:opacity-80 transition-opacity
-                        ${isCheckingAuth ? 'opacity-50 cursor-not-allowed' : ''}
-                    `}
-                    title={isCheckingAuth ? 'Checking authentication...' : 'Login to Spotify'}
-                />
+            {/* FIXED: Single button that changes image based on login state */}
+            <img
+                src={buttonImage}
+                alt={buttonAlt}
+                onClick={handleButtonClick}
+                className={`
+                    ${isMobile ? 'w-[80%] h-auto' : 'w-[90%] h-[20%]'}
+                    transition-opacity
+                    ${isCheckingAuth ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
+                `}
+                title={buttonTitle}
+            />
+
+            {/* Status text for logged in user */}
+            {spotifyUser && (
+                <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 
+                             text-xs text-green-400 bg-black bg-opacity-50 px-2 py-1 rounded">
+                    {spotifyUser.name}
+                </div>
             )}
         </div>
     )
