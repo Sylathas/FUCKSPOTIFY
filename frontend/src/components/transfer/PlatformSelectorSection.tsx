@@ -53,7 +53,7 @@ export default function PlatformSelectorSection({
                     localStorage.setItem('tidal_access_token', verifyData.access_token);
                     setIsTidalLoggedIn(true);
                     setIsLoggingIn(false);
-                    onSelectPlatform('TIDAL');
+                    // Don't auto-select platform after login - let user choose
                 }
             }, 3000);
 
@@ -67,7 +67,10 @@ export default function PlatformSelectorSection({
     const handleTidalLogout = async () => {
         localStorage.removeItem('tidal_access_token');
         setIsTidalLoggedIn(false);
-        onSelectPlatform(null);
+        // If Tidal was selected, deselect it
+        if (selectedPlatform === 'TIDAL') {
+            onSelectPlatform(null);
+        }
     };
 
     // On component load, check if we already have a token in localStorage
@@ -75,28 +78,186 @@ export default function PlatformSelectorSection({
         const token = localStorage.getItem('tidal_access_token');
         if (token) {
             setIsTidalLoggedIn(true);
-            onSelectPlatform('TIDAL');
         }
+        setIsCheckingTidalAuth(false);
     }, []);
 
-    const handlePlatformClick = async (platformName: string) => {
-        if (platformName === 'TIDAL' && !isTidalLoggedIn) {
-            handleTidalLogin();
-            return; // Don't select the platform until login is complete
-        } else if (!platforms.find(p => p.name === platformName)?.implemented) {
-            // Platform not implemented yet
-            alert(`${platformName} integration coming soon!`)
-            return
+    // Helper function to check if a platform is logged in
+    const isPlatformLoggedIn = (platformName: string): boolean => {
+        switch (platformName) {
+            case 'TIDAL':
+                return isTidalLoggedIn;
+            case 'BANDCAMP':
+                // Add Bandcamp login check here when implemented
+                return true; // Assuming Bandcamp doesn't need login for now
+            default:
+                return false;
         }
-        onSelectPlatform(platformName)
-    }
+    };
+
+    // Helper function to get the correct image source
+    const getImageSource = (platform: any): string => {
+        const isSelected = selectedPlatform === platform.name;
+
+        if (isSelected && platform.implemented) {
+            // Use the *Selected variant for selected platforms
+            const extension = platform.image.split('.').pop();
+            const baseName = platform.image.replace(`.${extension}`, '');
+            return `${baseName}_Selected.${extension}`;
+        }
+
+        return platform.image;
+    };
+
+    // Helper function to handle platform selection
+    const handlePlatformSelect = (platformName: string) => {
+        const platform = platforms.find(p => p.name === platformName);
+
+        if (!platform?.implemented) {
+            alert(`${platformName} integration coming soon!`);
+            return;
+        }
+
+        if (!isPlatformLoggedIn(platformName)) {
+            alert(`Please login to ${platformName} first!`);
+            return;
+        }
+
+        // Toggle selection: if already selected, deselect; otherwise select
+        if (selectedPlatform === platformName) {
+            onSelectPlatform(null);
+        } else {
+            onSelectPlatform(platformName);
+        }
+    };
+
+    // Helper function to handle login for different platforms
+    const handlePlatformLogin = (platformName: string) => {
+        switch (platformName) {
+            case 'TIDAL':
+                handleTidalLogin();
+                break;
+            // Add other platform login handlers here
+            default:
+                alert(`${platformName} login not implemented yet`);
+        }
+    };
+
+    // Helper function to handle logout for different platforms
+    const handlePlatformLogout = (platformName: string) => {
+        switch (platformName) {
+            case 'TIDAL':
+                handleTidalLogout();
+                break;
+            // Add other platform logout handlers here
+            default:
+                alert(`${platformName} logout not implemented yet`);
+        }
+    };
+
+    const renderPlatformButtons = (platform: any) => {
+        const isSelected = selectedPlatform === platform.name;
+        const isLoggedIn = isPlatformLoggedIn(platform.name);
+        const imageSrc = getImageSource(platform);
+
+        // Case 1: Platform not implemented
+        if (!platform.implemented) {
+            return (
+                <div key={platform.name} className="relative">
+                    <img
+                        src={imageSrc}
+                        alt={platform.name}
+                        className={`
+                            w-full h-auto opacity-50 cursor-not-allowed
+                            ${isMobile ? 'max-h-9' : 'max-h-10'}
+                        `}
+                        title={`${platform.name} - Coming Soon`}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <span className="text-xs text-white bg-black bg-opacity-75 px-1 rounded">
+                            Soon
+                        </span>
+                    </div>
+                </div>
+            );
+        }
+
+        // Case 2: Platform implemented but not logged in
+        if (!isLoggedIn) {
+            const isLoading = platform.name === 'TIDAL' && isLoggingIn;
+
+            return (
+                <div key={platform.name} className="relative">
+                    <img
+                        src={imageSrc}
+                        alt={platform.name}
+                        onClick={isLoading ? undefined : () => handlePlatformLogin(platform.name)}
+                        className={`
+                            w-full h-auto transition-all
+                            ${isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:brightness-110 hover:scale-102'}
+                            ${isMobile ? 'max-h-9' : 'max-h-10'}
+                        `}
+                        title={isLoading ? 'Waiting for authorization...' : `Click to login to ${platform.name}`}
+                    />
+                    {isLoading && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="text-xs text-white bg-black bg-opacity-75 px-1 rounded">
+                                Logging in...
+                            </span>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // Case 3: Platform implemented and logged in - Show two buttons side by side
+        return (
+            <div key={platform.name} className="flex space-x-1">
+                {/* Select/Deselect Button */}
+                <div className="flex-1">
+                    <img
+                        src={imageSrc}
+                        alt={`Select ${platform.name}`}
+                        onClick={() => handlePlatformSelect(platform.name)}
+                        className={`
+                            w-full h-auto cursor-pointer transition-all
+                            ${isSelected
+                                ? 'brightness-125 scale-105'
+                                : 'hover:brightness-110 hover:scale-102'
+                            }
+                            ${isMobile ? 'max-h-9' : 'max-h-10'}
+                        `}
+                        title={isSelected ? `Deselect ${platform.name}` : `Select ${platform.name}`}
+                    />
+                </div>
+
+                {/* Logout Button */}
+
+                {platform.name !== "BANDCAMP" && (
+                    <div className="flex-shrink-0">
+                        <img
+                            src="/Buttons/Logout.png"
+                            alt={`Logout from ${platform.name}`}
+                            onClick={() => handlePlatformLogout(platform.name)}
+                            className={`
+                h-auto cursor-pointer transition-all hover:brightness-110 hover:scale-102
+                ${isMobile ? 'max-h-9' : 'max-h-10'}
+            `}
+                            title={`Logout from ${platform.name}`}
+                            style={{ width: 'auto' }} // Let width adjust to maintain aspect ratio
+                        />
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div
             className={`
-        relative bg-cover bg-center bg-no-repeat flex flex-col items-center justify-center p-4
-        ${isMobile ? 'h-[300px]' : 'h-[100%]'}
-      `}
+                relative bg-cover bg-center bg-no-repeat flex flex-col items-center justify-center p-4
+                ${isMobile ? 'h-[300px]' : 'h-[100%]'}
+            `}
             style={{
                 backgroundImage: "url('/Buttons/UI_Background.png')",
                 backgroundSize: '100% 100%'
@@ -104,66 +265,10 @@ export default function PlatformSelectorSection({
         >
             {/* Platform buttons */}
             <div className="flex-1 flex flex-col justify-center space-y-2 w-full">
-                {platforms.map((platform) => {
-                    const isSelected = selectedPlatform === platform.name;
-
-                    // --- Define dynamic properties for the Tidal button ---
-                    let imageSrc = platform.image;
-                    let onClickAction = () => handlePlatformClick(platform.name);
-                    let titleText = platform.implemented ? `Select ${platform.name}` : `${platform.name} - Coming Soon`;
-                    let isDisabled = !platform.implemented || (platform.name === 'TIDAL' && isLoggingIn);
-
-                    if (platform.name === 'TIDAL') {
-                        if (isLoggingIn) {
-                            titleText = 'Waiting for authorization in other tab...';
-                        } else if (isTidalLoggedIn) {
-                            imageSrc = '/Buttons/Tidal_Logout.png';
-                            onClickAction = handleTidalLogout;
-                            titleText = 'Logged in to Tidal. Click to logout.';
-                        } else {
-                            // State: Not logged in, ready to start
-                            titleText = 'Click to login to Tidal';
-                        }
-                    } else if (platform.name === 'BANDCAMP') {
-
-                    }
-
-                    return (
-                        <div key={platform.name} className="relative">
-                            <img
-                                src={imageSrc}
-                                alt={platform.name}
-                                onClick={isDisabled ? undefined : onClickAction}
-                                className={`
-                                    w-full h-auto transition-all
-                                    ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                                    ${isSelected
-                                        ? 'brightness-125 scale-105'
-                                        : platform.implemented
-                                            ? 'hover:brightness-110 hover:scale-102'
-                                            : ''
-                                    }
-                                    ${isMobile ? 'max-h-9' : 'max-h-10'}
-                                `}
-                                title={titleText}
-                            />
-
-                            {/* Coming soon indicator for unimplemented platforms */}
-                            {!platform.implemented && (
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                    <span className="text-xs text-white bg-black bg-opacity-75 px-1 rounded">
-                                        Soon
-                                    </span>
-                                </div>
-                            )}
-                        </div>
-                    )
-                })}
+                {platforms.map(platform => renderPlatformButtons(platform))}
             </div>
 
-            {/* Remove the separate logout button if you wish, as it's now handled by the main Tidal button */}
-
-            {/* Status indicator can be removed or kept, as the button itself now shows the loading state */}
+            {/* Status indicator for initial auth check */}
             {isCheckingTidalAuth && (
                 <div className="absolute bottom-2 right-2">
                     <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse" />

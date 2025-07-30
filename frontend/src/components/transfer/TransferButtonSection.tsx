@@ -63,7 +63,6 @@ export default function TransferButtonSection({
                             setTransferStatus(progress.current_step)
                         }
 
-                        // Check if transfer is complete
                         if (progress.status === 'completed') {
                             setTransferStatus('Transfer completed successfully!')
                             setIsTransferring(false)
@@ -79,7 +78,6 @@ export default function TransferButtonSection({
                             setCurrentTransferId(null)
                         }
                     } else if (response.status === 404) {
-                        // Transfer not found or expired
                         setIsTransferring(false)
                         setCurrentTransferId(null)
                         setTransferStatus('Transfer session expired')
@@ -87,7 +85,7 @@ export default function TransferButtonSection({
                 } catch (error) {
                     console.error('Error polling progress:', error)
                 }
-            }, 2000) // Poll every 2 seconds
+            }, 2000)
         }
 
         return () => {
@@ -95,44 +93,160 @@ export default function TransferButtonSection({
         }
     }, [currentTransferId, isTransferring, selectedPlatform, BACKEND_API_URL])
 
+    // FIXED: Comprehensive data fetching that gets ALL selected items
     const fetchSelectedData = async () => {
-        const playlists: SpotifyPlaylist[] = []
+        console.log('🔍 Fetching selected data...')
+        console.log(`Selected: ${selectedSongs.length} songs, ${selectedAlbums.length} albums, ${selectedPlaylists.length} playlists`)
 
-        // Fetch full playlist objects and their tracks
-        if (selectedPlaylists.length > 0) {
-            const userPlaylists = await spotifyAuth.getUserPlaylists(0, 1000)
-            const selectedPlaylistObjects = userPlaylists.filter(playlist => selectedPlaylists.includes(playlist.id))
+        const tracksToProcess: SpotifyTrack[] = []
+        const albumsToProcess: SpotifyAlbum[] = []
+        const playlistsToProcess: SpotifyPlaylist[] = []
 
-            for (const playlist of selectedPlaylistObjects) {
-                const playlistTracks = await spotifyAuth.getPlaylistTracks(playlist.id)
-                playlists.push({ ...playlist, tracks: playlistTracks });
+        try {
+            // 1. Fetch ALL selected tracks (liked songs)
+            if (selectedSongs.length > 0) {
+                console.log('📀 Fetching ALL user tracks to find selected ones...')
+                setTransferStatus(`Loading your ${selectedSongs.length} selected tracks...`)
+
+                let allTracks: SpotifyTrack[] = []
+                let offset = 0
+                let foundCount = 0
+
+                // Keep fetching until we find all selected tracks or reach the end
+                while (foundCount < selectedSongs.length) {
+                    const batch = await spotifyAuth.getUserTracks(offset, 50)
+                    if (batch.length === 0) break // No more tracks
+
+                    allTracks.push(...batch)
+
+                    // Count how many selected tracks we've found so far
+                    foundCount = allTracks.filter(track => selectedSongs.includes(track.id)).length
+
+                    offset += 50
+
+                    // Update progress
+                    setTransferStatus(`Loading tracks... found ${foundCount}/${selectedSongs.length}`)
+                }
+
+                const selectedTracksData = allTracks.filter(track => selectedSongs.includes(track.id))
+                tracksToProcess.push(...selectedTracksData)
+                console.log(`✓ Found ${selectedTracksData.length}/${selectedSongs.length} selected tracks`)
             }
+
+            // 2. Fetch ALL selected albums
+            if (selectedAlbums.length > 0) {
+                console.log('💿 Fetching ALL user albums to find selected ones...')
+                setTransferStatus(`Loading your ${selectedAlbums.length} selected albums...`)
+
+                let allAlbums: SpotifyAlbum[] = []
+                let offset = 0
+                let foundCount = 0
+
+                // Keep fetching until we find all selected albums or reach the end
+                while (foundCount < selectedAlbums.length) {
+                    const batch = await spotifyAuth.getUserAlbums(offset, 50)
+                    if (batch.length === 0) break // No more albums
+
+                    allAlbums.push(...batch)
+
+                    // Count how many selected albums we've found so far
+                    foundCount = allAlbums.filter(album => selectedAlbums.includes(album.id)).length
+
+                    offset += 50
+
+                    // Update progress
+                    setTransferStatus(`Loading albums... found ${foundCount}/${selectedAlbums.length}`)
+                }
+
+                const selectedAlbumsData = allAlbums.filter(album => selectedAlbums.includes(album.id))
+                albumsToProcess.push(...selectedAlbumsData)
+                console.log(`✓ Found ${selectedAlbumsData.length}/${selectedAlbums.length} selected albums`)
+            }
+
+            // 3. Fetch ALL selected playlists WITH their tracks, covers, and descriptions
+            if (selectedPlaylists.length > 0) {
+                console.log('🎵 Fetching ALL user playlists to find selected ones...')
+                setTransferStatus(`Loading your ${selectedPlaylists.length} selected playlists...`)
+
+                let allPlaylists: SpotifyPlaylist[] = []
+                let offset = 0
+                let foundCount = 0
+
+                // Keep fetching until we find all selected playlists or reach the end
+                while (foundCount < selectedPlaylists.length) {
+                    const batch = await spotifyAuth.getUserPlaylists(offset, 50)
+                    if (batch.length === 0) break // No more playlists
+
+                    allPlaylists.push(...batch)
+
+                    // Count how many selected playlists we've found so far
+                    foundCount = allPlaylists.filter(playlist => selectedPlaylists.includes(playlist.id)).length
+
+                    offset += 50
+
+                    // Update progress
+                    setTransferStatus(`Loading playlists... found ${foundCount}/${selectedPlaylists.length}`)
+                }
+
+                const selectedPlaylistsData = allPlaylists.filter(playlist => selectedPlaylists.includes(playlist.id))
+
+                // Fetch tracks for each selected playlist
+                for (let i = 0; i < selectedPlaylistsData.length; i++) {
+                    const playlist = selectedPlaylistsData[i]
+                    setTransferStatus(`Loading tracks for playlist: ${playlist.name}`)
+
+                    try {
+                        const playlistTracks = await spotifyAuth.getPlaylistTracks(playlist.id)
+
+                        // Enhanced playlist object with full metadata
+                        const enhancedPlaylist = {
+                            ...playlist,
+                            tracks: playlistTracks,
+                            // Ensure we have cover image and description
+                            coverImage: playlist.images?.[0]?.url || playlist.coverImage,
+                            description: playlist.description || ''
+                        }
+
+                        playlistsToProcess.push(enhancedPlaylist)
+                        console.log(`✓ Loaded ${playlistTracks.length} tracks for playlist: ${playlist.name}`)
+                    } catch (error) {
+                        console.error(`Failed to load tracks for playlist ${playlist.name}:`, error)
+                        // Add playlist even without tracks to avoid losing it
+                        playlistsToProcess.push({
+                            ...playlist,
+                            tracks: [],
+                            coverImage: playlist.images?.[0]?.url || playlist.coverImage,
+                            description: playlist.description || ''
+                        })
+                    }
+                }
+
+                console.log(`✓ Processed ${playlistsToProcess.length}/${selectedPlaylists.length} selected playlists`)
+            }
+
+            console.log('📊 Final counts:')
+            console.log(`- Tracks: ${tracksToProcess.length}`)
+            console.log(`- Albums: ${albumsToProcess.length}`)
+            console.log(`- Playlists: ${playlistsToProcess.length}`)
+
+            return { tracksToProcess, albumsToProcess, playlistsToProcess }
+
+        } catch (error) {
+            console.error('Error fetching selected data:', error)
+            throw error
         }
-        return { playlists }
     }
 
     const handleTransfer = async () => {
         if (!canTransfer()) return
 
         setIsTransferring(true)
-        setTransferStatus('Gathering your selected music...')
+        setTransferStatus('Preparing transfer...')
         setTransferProgress(0)
 
         try {
-            // First, fetch all the detailed data for selected items
-            const allUserTracks = await spotifyAuth.getUserTracks(0, 1000);
-            const allUserAlbums = await spotifyAuth.getUserAlbums(0, 1000);
-            const allUserPlaylists = await spotifyAuth.getUserPlaylists(0, 1000);
-
-            const tracksToProcess = allUserTracks.filter(t => selectedSongs.includes(t.id));
-            const albumsToProcess = allUserAlbums.filter(a => selectedAlbums.includes(a.id));
-            const playlistsToProcess = allUserPlaylists.filter(p => selectedPlaylists.includes(p.id));
-
-            // Fetch tracks for playlists
-            for (const playlist of playlistsToProcess) {
-                const playlistTracks = await spotifyAuth.getPlaylistTracks(playlist.id);
-                playlist.tracks = playlistTracks;
-            }
+            // Fetch ALL selected data comprehensively
+            const { tracksToProcess, albumsToProcess, playlistsToProcess } = await fetchSelectedData()
 
             const tidalToken = localStorage.getItem('tidal_access_token');
             if (selectedPlatform === 'TIDAL' && !tidalToken) {
@@ -153,7 +267,7 @@ export default function TransferButtonSection({
                     (tracksToProcess.length > 0 ? 1 : 0) +
                     (albumsToProcess.length > 0 ? 1 : 0);
 
-                // Handle playlists with progress tracking
+                // Handle playlists with progress tracking (includes covers & descriptions)
                 if (playlistsToProcess.length > 0) {
                     setTransferStatus('Sending playlists to server...');
                     const res = await fetch(`${BACKEND_API_URL}/api/transfer/playlists`, {
@@ -175,7 +289,7 @@ export default function TransferButtonSection({
 
                 // Handle liked songs
                 if (tracksToProcess.length > 0) {
-                    setTransferStatus('Processing liked songs...');
+                    setTransferStatus(`Processing ${tracksToProcess.length} liked songs...`);
                     const res = await fetch(`${BACKEND_API_URL}/api/like/songs`, {
                         method: 'POST',
                         headers: headers,
@@ -183,13 +297,16 @@ export default function TransferButtonSection({
                     });
                     const songResult = await res.json();
                     results.push(`Liked Songs: ${songResult.message}`);
+                    if (songResult.failed && songResult.failed.length > 0) {
+                        console.log('Failed tracks:', songResult.failed);
+                    }
                     completedOperations++;
                     setTransferProgress(Math.round((completedOperations / totalOperations) * 100));
                 }
 
-                // Handle albums
+                // Handle albums (add to favorites, not individual tracks)
                 if (albumsToProcess.length > 0) {
-                    setTransferStatus('Processing albums...');
+                    setTransferStatus(`Processing ${albumsToProcess.length} albums...`);
                     const res = await fetch(`${BACKEND_API_URL}/api/add/albums`, {
                         method: 'POST',
                         headers: headers,
@@ -197,6 +314,9 @@ export default function TransferButtonSection({
                     });
                     const albumResult = await res.json();
                     results.push(`Albums: ${albumResult.message}`);
+                    if (albumResult.failed && albumResult.failed.length > 0) {
+                        console.log('Failed albums:', albumResult.failed);
+                    }
                     completedOperations++;
                     setTransferProgress(Math.round((completedOperations / totalOperations) * 100));
                 }
@@ -204,7 +324,7 @@ export default function TransferButtonSection({
                 // If no playlists (so no background transfer), show completion
                 if (playlistsToProcess.length === 0) {
                     alert("Transfer completed!\n\n" + results.join("\n"));
-                    setTransferStatus('Done!');
+                    setTransferStatus('Transfer completed!');
                     setTimeout(() => {
                         setIsTransferring(false);
                         setTransferStatus('');

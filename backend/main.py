@@ -69,11 +69,23 @@ class SpotifyTrack(BaseModel):
     duration: int
     isrc: Optional[str] = None
 
+class SpotifyImage(BaseModel):
+    url: str
+    height: Optional[int] = None
+    width: Optional[int] = None
+
 class SpotifyPlaylist(BaseModel): 
     id: str
     name: str
     description: Optional[str] = None
     tracks: Optional[List[SpotifyTrack]] = []
+    images: Optional[List[SpotifyImage]] = []
+    coverImage: Optional[str] = None
+    trackCount: Optional[int] = None
+    isPublic: Optional[bool] = None
+    collaborative: Optional[bool] = None
+    owner: Optional[Dict[str, Any]] = None
+    spotifyUrl: Optional[str] = None
 
 class SpotifyAlbum(BaseModel): 
     id: str
@@ -265,10 +277,10 @@ async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = He
     }
 
 # --- Playlist Transfer with Progress Tracking ---
-def run_playlist_transfer_process(token: str, playlists: List[dict], transfer_id: str):
-    """Background task for transferring playlists with progress tracking."""
+async def run_playlist_transfer_process_async(token: str, playlists: List[dict], transfer_id: str):
+    """Async background task for transferring playlists with full metadata support."""
     try:
-        print(f"🎵 Starting playlist transfer process: {transfer_id}")
+        print(f"🎵 Starting enhanced playlist transfer process: {transfer_id}")
         tidal_session = get_tidal_session(token)
         config_obj, config_dict = get_tidal_config()
         
@@ -277,7 +289,14 @@ def run_playlist_transfer_process(token: str, playlists: List[dict], transfer_id
         
         for i, playlist_data in enumerate(playlists):
             playlist_name = playlist_data.get('name', f'Playlist {i+1}')
+            playlist_description = playlist_data.get('description', '')
+            playlist_cover = playlist_data.get('coverImage')
+            track_count = len(playlist_data.get('tracks', []))
+            
             print(f"🔄 Processing playlist {i+1}/{total_playlists}: {playlist_name}")
+            print(f"   📊 {track_count} tracks")
+            print(f"   📝 Description: {playlist_description[:50] + '...' if playlist_description else 'None'}")
+            print(f"   🖼️  Cover: {'Yes' if playlist_cover else 'None'}")
             
             update_progress(
                 transfer_id, "running", 
@@ -286,8 +305,8 @@ def run_playlist_transfer_process(token: str, playlists: List[dict], transfer_id
                 i, total_playlists, playlist_name
             )
             
-            # Run the sync function
-            asyncio.run(sync_playlist(tidal_session, playlist_data, config_dict))
+            # Now properly awaited
+            await sync_playlist(tidal_session, playlist_data, config_dict)
             
             print(f"✅ Completed playlist: {playlist_name}")
         
@@ -299,6 +318,20 @@ def run_playlist_transfer_process(token: str, playlists: List[dict], transfer_id
         print(f"❌ BACKGROUND TASK ERROR: {error_msg}")
         update_progress(transfer_id, "failed", error_msg, 0, 0, len(playlists))
 
+def run_playlist_transfer_process(token: str, playlists: List[dict], transfer_id: str):
+    """Sync wrapper that runs the async function in a new event loop."""
+    import asyncio
+    try:
+        # Create new event loop for the background task
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(run_playlist_transfer_process_async(token, playlists, transfer_id))
+    except Exception as e:
+        print(f"Background task wrapper error: {e}")
+        update_progress(transfer_id, "failed", f"Task error: {str(e)}", 0, 0, len(playlists))
+    finally:
+        loop.close()
+
 @app.post("/api/transfer/playlists")
 async def transfer_playlists_to_tidal(request: TransferPlaylistRequest, background_tasks: BackgroundTasks, authorization: str = Header(...)):
     """Start playlist transfer to Tidal in background."""
@@ -308,6 +341,7 @@ async def transfer_playlists_to_tidal(request: TransferPlaylistRequest, backgrou
     
     print(f"🚀 Initiating playlist transfer: {transfer_id} ({len(playlists_as_dicts)} playlists)")
     
+    # Use the sync wrapper for BackgroundTasks
     background_tasks.add_task(run_playlist_transfer_process, token, playlists_as_dicts, transfer_id)
     
     return {
