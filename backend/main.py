@@ -40,7 +40,7 @@ app.add_middleware(
 # --- Helper Function (No changes here) ---
 def get_tidal_session(token: str) -> tidalapi.Session:
     session = tidalapi.Session()
-    session.load_oauth_session(session_id=None, token_type="Bearer", access_token=token)
+    session.load_oauth_session(token_type="Bearer", access_token=token)
     if not session.check_login():
         raise HTTPException(status_code=401, detail="Invalid or expired Tidal token.")
     return session
