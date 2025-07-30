@@ -32,17 +32,17 @@ export default function HomePage() {
       />
 
       {/* Section 1: Landing Page with positioned images */}
-      <section id="landing" className="relative" style={{ minHeight: `${isMobile ? '800px' : '80vh'}` }}>
+      <section id="landing" className="relative z-1" style={{ minHeight: `${isMobile ? '800px' : '80vh'}` }}>
         <LandingSection />
       </section>
 
       {/* Section 2: Transfer UI */}
-      <section id="transfer" className="relative" style={{ minHeight: `${isMobile ? '2000px' : '50vh'}` }}>
+      <section id="transfer" className="relative z-2" style={{ minHeight: `${isMobile ? '2000px' : '50vh'}` }}>
         <TransferUI />
       </section>
 
       {/* Section 3: Disclaimer - just empty space, background shows disclaimer */}
-      <section id="disclaimer" className="relative" style={{ minHeight: `${isMobile ? '800px' : '50vh'}` }}>
+      <section id="disclaimer" className="relative z-1" style={{ minHeight: `${isMobile ? '800px' : '50vh'}` }}>
       </section>
     </div>
   )
