@@ -84,7 +84,12 @@ def initiate_tidal_login():
     login, future = session.login_oauth()
     poll_key = str(uuid.uuid4())
     pending_logins[poll_key] = future
-    return {"login_url": login.verification_uri_complete, "poll_key": poll_key}
+
+    login_url = login.verification_uri_complete
+    if not login_url.startswith('https://'):
+        login_url = 'https://' + login_url
+    
+    return {"login_url": login_url, "poll_key": poll_key}
 
 @app.post("/api/tidal/verify-login", response_model=LoginVerifyResponse)
 async def verify_tidal_login(request: LoginVerifyRequest):
