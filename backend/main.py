@@ -80,11 +80,18 @@ def get_tidal_session(token: str) -> tidalapi.Session:
 # --- Authentication Endpoints ---
 @app.get("/api/tidal/initiate-login", response_model=LoginInitResponse)
 def initiate_tidal_login():
-    session = tidalapi.Session()
+    """Starts the Tidal device login flow and returns a URL for the user."""
+    # --- Load the config file ---
+    with open('config.yml', 'r') as f:
+        config = yaml.safe_load(f)
+
+    # --- Pass the config to the session ---
+    session = tidalapi.Session(config=config)
     login, future = session.login_oauth()
+    
     poll_key = str(uuid.uuid4())
     pending_logins[poll_key] = future
-
+    
     login_url = login.verification_uri_complete
     if not login_url.startswith('https://'):
         login_url = 'https://' + login_url
