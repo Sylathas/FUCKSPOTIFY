@@ -110,7 +110,7 @@ async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = He
         tidal_track = await tidal_search(track_data.dict(), tidal_session)
         if tidal_track:
             try:
-                await asyncio.to_thread(tidal_session.user.favorites.add_track, tidal_track.id)
+                await asyncio.to_thread(tidal_session.user.favorites.add_track, [tidal_track.id])
                 liked_count += 1
                 print(f"Liked track: {track_data.name}")
             except Exception as e:
@@ -133,7 +133,7 @@ async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = He
         if search_results['albums']:
             tidal_album_id = search_results['albums'][0].id
             try:
-                await asyncio.to_thread(tidal_session.user.favorites.add_album, tidal_album_id)
+                await asyncio.to_thread(tidal_session.user.favorites.add_album, [tidal_album_id])
                 added_count += 1
                 print(f"Added album: {album_data.name}")
             except Exception as e:
