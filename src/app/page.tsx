@@ -45,7 +45,7 @@ export default function HomePage() {
       {/* Section 3: Disclaimer - just empty space, background shows disclaimer */}
       <section id="disclaimer" className="relative" style={{ minHeight: `${isMobile ? '800px' : '50vh'}` }}>
       </section>
-      {process.env.NODE_ENV === 'development' && <TidalDebugPanel />}
+      <TidalDebugPanel />
     </div>
   )
 }
