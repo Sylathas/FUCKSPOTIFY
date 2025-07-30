@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 interface PlatformSelectorSectionProps {
     isMobile: boolean
     selectedPlatform: string | null
-    onSelectPlatform: (platform: string) => void
+    onSelectPlatform: (platform: string | null) => void
 }
 
 export default function PlatformSelectorSection({
@@ -53,6 +53,7 @@ export default function PlatformSelectorSection({
                     localStorage.setItem('tidal_access_token', verifyData.access_token);
                     setIsTidalLoggedIn(true);
                     setIsLoggingIn(false);
+                    onSelectPlatform('TIDAL');
                 }
             }, 3000);
 
@@ -66,6 +67,7 @@ export default function PlatformSelectorSection({
     const handleTidalLogout = async () => {
         localStorage.removeItem('tidal_access_token');
         setIsTidalLoggedIn(false);
+        onSelectPlatform(null);
     };
 
     // On component load, check if we already have a token in localStorage
