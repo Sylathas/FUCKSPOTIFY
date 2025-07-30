@@ -208,13 +208,13 @@ Thanks!`)
                                     disabled={!userEmail.trim()}
                                     className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded text-sm"
                                 >
-                                    📧 Request Access
+                                    Request Access
                                 </button>
                                 <button
                                     onClick={handleActualLogin}
                                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
                                 >
-                                    🤞 Try Anyway
+                                    Try Anyway
                                 </button>
                             </div>
 
@@ -228,7 +228,7 @@ Thanks!`)
 
                         <div className="mt-4 pt-4 border-t border-gray-700">
                             <p className="text-gray-400 text-xs text-center">
-                                💡 Make sure to use the same email as your Spotify account
+                                Make sure to use the same email as your Spotify account
                             </p>
                         </div>
                     </div>
