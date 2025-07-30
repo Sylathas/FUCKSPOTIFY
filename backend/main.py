@@ -10,7 +10,7 @@ import tidalapi
 from tidalapi import Config
 
 # Import your library functions
-from sync import sync_playlist, tidal_search
+from sync import sync_playlist, tidal_search_single
 
 # --- In-memory stores ---
 pending_logins: Dict[str, Tuple[tidalapi.Session, Any]] = {}
@@ -199,7 +199,7 @@ async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = He
     
     for i, track_data in enumerate(request.tracks):
         try:
-            tidal_track = await tidal_search(track_data.dict(), tidal_session)
+            tidal_track = await tidal_search_single(track_data.dict(), tidal_session)
             if tidal_track:
                 # FIX: Convert to string, don't pass as list
                 await asyncio.to_thread(tidal_session.user.favorites.add_track, str(tidal_track.id))
