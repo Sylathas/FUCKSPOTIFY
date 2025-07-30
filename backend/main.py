@@ -93,14 +93,24 @@ def initiate_tidal_login():
 
 @app.post("/api/tidal/verify-login", response_model=LoginVerifyResponse)
 async def verify_tidal_login(request: LoginVerifyRequest):
+    """Checks if the user has completed the login flow."""
     future = pending_logins.get(request.poll_key)
     if not future:
-        raise HTTPException(status_code=404, detail="Invalid poll key.")
+        raise HTTPException(status_code=404, detail="Login session not found or expired.")
 
     if future.done():
-        session_data = future.result()
-        del pending_logins[request.poll_key] # Clean up
-        return {"status": "completed", "access_token": session_data.access_token}
+        # --- try/except block to handle login failures ---
+        try:
+            session_data = future.result()
+            del pending_logins[request.poll_key] # Clean up successful login
+            return {
+                "status": "completed",
+                "access_token": session_data.access_token,
+            }
+        except Exception as e:
+            print(f"TIDAL LOGIN FAILED: {e}")
+            del pending_logins[request.poll_key] # Clean up failed login
+            raise HTTPException(status_code=500, detail="Tidal login failed or was cancelled.")
     else:
         return {"status": "pending"}
 

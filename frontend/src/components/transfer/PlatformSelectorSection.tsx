@@ -31,7 +31,13 @@ export default function PlatformSelectorSection({
             const { login_url, poll_key } = await res.json();
 
             // 2. Open the login page for the user
-            window.open(login_url, '_blank');
+            const width = 600;
+            const height = 700;
+            const left = (window.screen.width / 2) - (width / 2);
+            const top = (window.screen.height / 2) - (height / 2);
+            const features = `width=${width},height=${height},top=${top},left=${left}`;
+
+            window.open(login_url, 'TidalLogin', features);
 
             // 3. Poll our backend to see if the user has finished
             const pollInterval = setInterval(async () => {
