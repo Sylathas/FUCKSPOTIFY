@@ -75,6 +75,7 @@ export default function PlatformSelectorSection({
         const token = localStorage.getItem('tidal_access_token');
         if (token) {
             setIsTidalLoggedIn(true);
+            onSelectPlatform('TIDAL');
         }
     }, []);
 
@@ -105,15 +106,14 @@ export default function PlatformSelectorSection({
             <div className="flex-1 flex flex-col justify-center space-y-2 w-full">
                 {platforms.map((platform) => {
                     const isSelected = selectedPlatform === platform.name;
-                    const isTidal = platform.name === 'TIDAL';
 
                     // --- Define dynamic properties for the Tidal button ---
                     let imageSrc = platform.image;
                     let onClickAction = () => handlePlatformClick(platform.name);
                     let titleText = platform.implemented ? `Select ${platform.name}` : `${platform.name} - Coming Soon`;
-                    let isDisabled = !platform.implemented || (isTidal && isLoggingIn);
+                    let isDisabled = !platform.implemented || (platform.name === 'TIDAL' && isLoggingIn);
 
-                    if (isTidal) {
+                    if (platform.name === 'TIDAL') {
                         if (isLoggingIn) {
                             titleText = 'Waiting for authorization in other tab...';
                         } else if (isTidalLoggedIn) {
@@ -124,6 +124,8 @@ export default function PlatformSelectorSection({
                             // State: Not logged in, ready to start
                             titleText = 'Click to login to Tidal';
                         }
+                    } else if (platform.name === 'BANDCAMP') {
+
                     }
 
                     return (

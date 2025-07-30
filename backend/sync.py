@@ -3,24 +3,25 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import List, Sequence, Set
 import tidalapi
-from tqdm.asyncio import tqdm as atqdm
 
 # Assuming cache.py and tidalapi_patch.py are in the same directory
 from cache import failure_cache, track_match_cache
 from tidalapi_patch import add_multiple_tracks_to_playlist, clear_tidal_playlist, get_all_playlists, get_all_playlist_tracks
 
-# --- String & Matching Helpers ---
+# --- Robust String & Matching Helpers ---
 
-def normalize(s) -> str:
+def normalize(s: str) -> str:
     return unicodedata.normalize('NFD', s).encode('ascii', 'ignore').decode('ascii')
 
 def simple(input_string: str) -> str:
     return input_string.split('-')[0].strip().split('(')[0].strip().split('[')[0].strip()
 
 def isrc_match(tidal_track: tidalapi.Track, spotify_track: dict) -> bool:
-    return tidal_track.isrc and spotify_track.get("isrc") and tidal_track.isrc == spotify_track["isrc"]
+    spotify_isrc = spotify_track.get("isrc")
+    return tidal_track.isrc and spotify_isrc and tidal_track.isrc == spotify_isrc
 
-def duration_match(tidal_track: tidalapi.Track, spotify_track: dict, tolerance=2) -> bool:
+def duration_match(tidal_track: tidalapi.Track, spotify_track: dict, tolerance=3) -> bool:
+    # Increased tolerance slightly to 3 seconds for more flexibility
     return abs(tidal_track.duration - spotify_track.get('duration', 0) / 1000) < tolerance
 
 def name_match(tidal_track: tidalapi.Track, spotify_track: dict) -> bool:
@@ -33,24 +34,42 @@ def artist_match(tidal_track: tidalapi.Track, spotify_track: dict) -> bool:
     return tidal_artists.intersection(spotify_artists) != set()
 
 def match(tidal_track: tidalapi.Track, spotify_track: dict) -> bool:
+    """A robust check to see if a Tidal track is the correct match for a Spotify track."""
     if not spotify_track.get('id'): return False
-    return isrc_match(tidal_track, spotify_track) or (
+    # Prioritize ISRC match as it's the most reliable
+    if isrc_match(tidal_track, spotify_track):
+        return True
+    # Fallback to checking duration, name, and at least one artist
+    return (
         duration_match(tidal_track, spotify_track)
         and name_match(tidal_track, spotify_track)
         and artist_match(tidal_track, spotify_track)
     )
 
-# --- Tidal Search & Sync Logic ---
+# --- NEW: Robust, Multi-Artist Search Function ---
 
 async def tidal_search(spotify_track: dict, tidal_session: tidalapi.Session) -> tidalapi.Track | None:
-    # This is a simplified search. The repo's original album-first search is also good.
-    query = f"{simple(spotify_track['name'])} {simple(spotify_track['artists'][0]['name'])}"
-    search_results = await asyncio.to_thread(
-        tidal_session.search, query, models=[tidalapi.media.Track]
-    )
-    for track in search_results['tracks']:
-        if match(track, spotify_track):
-            return track
+    """Searches for a spotify track on Tidal, trying each artist for better accuracy."""
+    track_name = simple(spotify_track['name'])
+    
+    # Iterate through each artist listed on Spotify for the track
+    for artist in spotify_track.get('artists', []):
+        artist_name = simple(artist['name'])
+        query = f"{track_name} {artist_name}"
+        
+        # Search Tidal with the constructed query
+        search_results = await asyncio.to_thread(
+            tidal_session.search, query, models=[tidalapi.media.Track]
+        )
+        
+        # Check all results against our robust 'match' function
+        for tidal_track in search_results['tracks']:
+            if match(tidal_track, spotify_track):
+                print(f"Found match for '{spotify_track['name']}': '{tidal_track.name}' by {tidal_track.artist.name}")
+                return tidal_track # Return the first good match
+
+    # If no match was found after trying all artists
+    print(f"Could not find match for: {spotify_track['artists'][0]['name']} - {spotify_track['name']}")
     failure_cache.cache_match_failure(spotify_track['id'])
     return None
 

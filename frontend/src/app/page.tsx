@@ -24,7 +24,7 @@ export default function HomePage() {
       <div
         className="absolute inset-0 w-full h-full bg-center bg-no-repeat"
         style={{
-          backgroundImage: `${isMobile ? "url('/Background_mobile.png')" : "url('/Background_desktop.png')"}`, // Main background
+          backgroundImage: `${isMobile ? "url('/Background_mobile.jpg')" : "url('/Background_desktop.jpg')"}`, // Main background
           zIndex: 0,
           backgroundSize: '100% 100%',
           minHeight: '240vh'
