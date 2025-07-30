@@ -81,11 +81,19 @@ def get_tidal_session(token: str) -> tidalapi.Session:
 @app.get("/api/tidal/initiate-login", response_model=LoginInitResponse)
 def initiate_tidal_login():
     """Starts the Tidal device login flow and returns a URL for the user."""
-    # --- Load the config file ---
-    with open('config.yml', 'r') as f:
-        config = yaml.safe_load(f)
+    print("--- DEBUGGING FILE PATHS ---")
+    print(f"Current Working Directory: {os.getcwd()}")
+    print(f"Files in this directory: {os.listdir()}")
+    print("----------------------------")
+    config = None
+    # --- Safely load the config file ---
+    try:
+        with open('config.yml', 'r') as f:
+            config = yaml.safe_load(f)
+    except FileNotFoundError:
+        print("INFO: config.yml not found, continuing with default settings.")
+        pass # It's okay if the file doesn't exist
 
-    # --- Pass the config to the session ---
     session = tidalapi.Session(config=config)
     login, future = session.login_oauth()
     
@@ -106,7 +114,7 @@ async def verify_tidal_login(request: LoginVerifyRequest):
         raise HTTPException(status_code=404, detail="Login session not found or expired.")
 
     if future.done():
-        # --- FINAL FIX: Catch BaseException to trap everything, including system exits ---
+        # --- Catch BaseException to trap everything, including system exits ---
         try:
             session_data = future.result()
             # Clean up the successful login from our temporary store
@@ -167,10 +175,17 @@ async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = He
 
 def run_playlist_transfer_process(token: str, playlists: List[dict]):
     """Background task for transferring playlists."""
+    config = None
     try:
         tidal_session = get_tidal_session(token)
-        with open('config.yml', 'r') as f:
-            config = yaml.safe_load(f)
+        # Safely load the config file ---
+        try:
+            with open('config.yml', 'r') as f:
+                config = yaml.safe_load(f)
+        except FileNotFoundError:
+            print("INFO: config.yml not found, continuing with default settings.")
+            pass # It's okay if the file doesn't exist
+
         for playlist_data in playlists:
             asyncio.run(sync_playlist(tidal_session, playlist_data, config))
     except Exception as e:
