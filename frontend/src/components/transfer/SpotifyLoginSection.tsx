@@ -140,7 +140,7 @@ export default function SpotifyLoginSection({
     }
 
     // Determine which image to show
-    const buttonImage = spotifyUser ? "/Buttons/Logout.png" : "/Buttons/Login.png"
+    const buttonImage = spotifyUser ? "/Buttons/Logged.png" : "/Buttons/Login.png"
     const buttonAlt = spotifyUser ? "Logout from Spotify" : "Login to Spotify"
     const buttonTitle = spotifyUser
         ? `Logged in as ${spotifyUser.name} - Click to logout`
