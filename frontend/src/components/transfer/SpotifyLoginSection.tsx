@@ -10,17 +10,19 @@ interface SpotifyLoginSectionProps {
 // Auth Helper Functions - FIXED
 const DynamicSpotifyAuth = {
     getClientId(): string | null {
-        const envClientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID
-        if (envClientId) return envClientId
-
         if (typeof window !== 'undefined') {
-            return localStorage.getItem('spotify_user_client_id')
+            const userClientId = localStorage.getItem('spotify_user_client_id')
+            if (userClientId && userClientId.trim() && userClientId.length >= 32) {
+                return userClientId.trim()
+            }
         }
         return null
     },
 
     hasCredentials(): boolean {
-        return this.getClientId() !== null
+        const clientId = this.getClientId()
+        // Additional validation - client ID should be at least 32 characters (Spotify client IDs are 32 chars)
+        return clientId !== null && clientId.length >= 32
     },
 
     // FIXED: Always use the same redirect URI that users put in their Spotify app
@@ -109,19 +111,24 @@ function SpotifySetupOverlay({ isMobile, onClose, onSetupComplete }: {
                         type="text"
                         value={clientId}
                         onChange={(e) => setClientId(e.target.value)}
-                        placeholder="Paste your Client ID here"
+                        placeholder="Paste your Client ID here (32 characters)"
                         className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white text-sm"
                     />
+                    {clientId && clientId.length < 32 && (
+                        <div className="text-yellow-400 text-xs">
+                            ⚠️ Client ID should be 32 characters long. Make sure you copied the Client ID, not the Client Secret.
+                        </div>
+                    )}
                     <button
                         onClick={() => {
-                            if (clientId.trim()) {
+                            if (clientId.trim() && clientId.trim().length >= 32) {
                                 localStorage.setItem('spotify_user_client_id', clientId.trim())
-                                console.log('Saved client ID:', clientId.trim())
+                                console.log('Saved client ID:', clientId.trim().substring(0, 8) + '...')
                                 onSetupComplete()
                                 onClose()
                             }
                         }}
-                        disabled={!clientId.trim()}
+                        disabled={!clientId.trim() || clientId.trim().length < 32}
                         className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded w-full"
                     >
                         Save & Start Using App
@@ -316,24 +323,22 @@ export default function SpotifyLoginSection({
         initializeAuth()
     }, [onLogin, spotifyUser, isMobile])
 
-    // FIXED: Better credential checking
+    // FIXED: Better credential checking with validation
     const handleLogin = async () => {
         console.log('=== LOGIN BUTTON CLICKED ===')
-        const clientId = DynamicSpotifyAuth.getClientId()
-        console.log('Client ID check:', {
-            hasClientId: !!clientId,
-            envClientId: !!process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID,
-            userClientId: !!localStorage.getItem('spotify_user_client_id')
-        })
 
-        if (!clientId) {
-            console.log('No client ID found, showing setup overlay')
+        // Check if we have valid credentials
+        if (!DynamicSpotifyAuth.hasCredentials()) {
+            console.log('No valid client ID found, showing setup overlay')
             setShowOverlay(true)
             return
         }
 
+        const clientId = DynamicSpotifyAuth.getClientId()
+        console.log('Using valid client ID:', clientId?.substring(0, 8) + '...')
+
         try {
-            console.log('Starting Spotify login with client ID:', clientId.substring(0, 8) + '...')
+            console.log('Starting Spotify login with validated client ID')
             setAuthError(null)
 
             // FIXED: Use the correct redirect URI
@@ -350,7 +355,7 @@ export default function SpotifyLoginSection({
 
             const params = new URLSearchParams({
                 response_type: 'code',
-                client_id: clientId,
+                client_id: clientId!,
                 scope: 'user-read-private user-read-email user-library-read playlist-read-private playlist-read-collaborative',
                 redirect_uri: redirectUri,
                 state: state,
@@ -380,6 +385,8 @@ export default function SpotifyLoginSection({
         localStorage.removeItem('spotify_user')
         localStorage.removeItem('spotify_login_started')
         localStorage.removeItem('spotify_login_timestamp')
+        // Also clear user client ID if they want to start fresh
+        // localStorage.removeItem('spotify_user_client_id')
         onLogin(null)
         setAuthError(null)
     }
@@ -390,7 +397,7 @@ export default function SpotifyLoginSection({
         if (spotifyUser) {
             handleLogout()
         } else {
-            handleLogin() // This will show overlay if no credentials
+            handleLogin() // This will show overlay if no valid credentials
         }
     }
 
@@ -438,6 +445,13 @@ export default function SpotifyLoginSection({
                         >
                             ×
                         </button>
+                    </div>
+                )}
+
+                {/* Debug info to help you see what's happening */}
+                {process.env.NODE_ENV === 'development' && (
+                    <div className="absolute top-2 left-2 text-xs text-gray-400 bg-black bg-opacity-50 p-1 rounded">
+                        Valid ID: {DynamicSpotifyAuth.hasCredentials() ? '✓' : '❌'}
                     </div>
                 )}
 
