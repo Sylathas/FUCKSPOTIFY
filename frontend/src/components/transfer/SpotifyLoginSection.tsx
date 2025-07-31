@@ -7,7 +7,7 @@ interface SpotifyLoginSectionProps {
     spotifyUser: any
 }
 
-// Auth Helper Functions
+// Auth Helper Functions - FIXED
 const DynamicSpotifyAuth = {
     getClientId(): string | null {
         const envClientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID
@@ -23,13 +23,13 @@ const DynamicSpotifyAuth = {
         return this.getClientId() !== null
     },
 
+    // FIXED: Always use the same redirect URI that users put in their Spotify app
     getRedirectUri(): string {
-        if (typeof window === 'undefined') return 'http://localhost:3000/callback'
-        return `${window.location.origin}/callback`
+        return 'https://fuckspotify.netlify.app/callback'
     }
 }
 
-// Overlay Component
+// Overlay Component - FIXED redirect URI
 function SpotifySetupOverlay({ isMobile, onClose, onSetupComplete }: {
     isMobile: boolean
     onClose: () => void
@@ -86,14 +86,12 @@ function SpotifySetupOverlay({ isMobile, onClose, onSetupComplete }: {
             action: (
                 <div className="space-y-2">
                     <div className="bg-gray-800 p-2 rounded font-mono text-sm text-green-400 border">
-                        {typeof window !== 'undefined' ? `${window.location.origin}/callback` : ''}
+                        https://fuckspotify.netlify.app/callback
                     </div>
                     <button
                         onClick={() => {
-                            if (typeof window !== 'undefined') {
-                                navigator.clipboard.writeText(`${window.location.origin}/callback`)
-                                alert('Copied to clipboard!')
-                            }
+                            navigator.clipboard.writeText('https://fuckspotify.netlify.app/callback')
+                            alert('Copied to clipboard!')
                         }}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs"
                     >
@@ -118,6 +116,7 @@ function SpotifySetupOverlay({ isMobile, onClose, onSetupComplete }: {
                         onClick={() => {
                             if (clientId.trim()) {
                                 localStorage.setItem('spotify_user_client_id', clientId.trim())
+                                console.log('Saved client ID:', clientId.trim())
                                 onSetupComplete()
                                 onClose()
                             }
@@ -254,7 +253,7 @@ export default function SpotifyLoginSection({
     const [authError, setAuthError] = useState<string | null>(null)
     const [showOverlay, setShowOverlay] = useState(false)
 
-    // Check for existing authentication when component loads
+    // FIXED: Check for existing authentication when component loads
     useEffect(() => {
         const initializeAuth = async () => {
             if (spotifyUser) {
@@ -267,6 +266,8 @@ export default function SpotifyLoginSection({
 
             try {
                 console.log('Initializing Spotify auth...')
+                console.log('Has credentials:', DynamicSpotifyAuth.hasCredentials())
+                console.log('Client ID available:', !!DynamicSpotifyAuth.getClientId())
 
                 const mobileLoginStarted = localStorage.getItem('spotify_login_started')
                 if (mobileLoginStarted && isMobile) {
@@ -315,21 +316,29 @@ export default function SpotifyLoginSection({
         initializeAuth()
     }, [onLogin, spotifyUser, isMobile])
 
+    // FIXED: Better credential checking
     const handleLogin = async () => {
+        console.log('=== LOGIN BUTTON CLICKED ===')
         const clientId = DynamicSpotifyAuth.getClientId()
+        console.log('Client ID check:', {
+            hasClientId: !!clientId,
+            envClientId: !!process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID,
+            userClientId: !!localStorage.getItem('spotify_user_client_id')
+        })
 
         if (!clientId) {
-            // Show setup overlay instead of trying to login
+            console.log('No client ID found, showing setup overlay')
             setShowOverlay(true)
             return
         }
 
         try {
-            console.log('Starting Spotify login with credentials...')
+            console.log('Starting Spotify login with client ID:', clientId.substring(0, 8) + '...')
             setAuthError(null)
 
-            // Your existing login logic with dynamic client ID
+            // FIXED: Use the correct redirect URI
             const redirectUri = DynamicSpotifyAuth.getRedirectUri()
+            console.log('Using redirect URI:', redirectUri)
 
             const state = generateRandomString(16)
             sessionStorage.setItem('spotify_auth_state', state)
@@ -356,6 +365,7 @@ export default function SpotifyLoginSection({
             }
 
             const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`
+            console.log('Redirecting to Spotify:', authUrl.substring(0, 100) + '...')
             window.location.href = authUrl
 
         } catch (error) {
@@ -385,6 +395,7 @@ export default function SpotifyLoginSection({
     }
 
     const handleSetupComplete = () => {
+        console.log('Setup completed, attempting login...')
         // Credentials are now saved, user can try actual login
         handleLogin()
     }

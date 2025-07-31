@@ -1,19 +1,21 @@
 import { SpotifyApi } from '@spotify/web-api-ts-sdk'
 import { SpotifyTrack, SpotifyAlbum, SpotifyPlaylist } from '@/types'
 
-// Spotify OAuth configuration - NO CLIENT SECRET NEEDED FOR PKCE
+// FIXED: Dynamic client ID function
 const getClientId = (): string => {
     const envClientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID
     if (envClientId) return envClientId
 
-    const userClientId = localStorage.getItem('spotify_user_client_id')
-    if (userClientId) return userClientId
+    if (typeof window !== 'undefined') {
+        const userClientId = localStorage.getItem('spotify_user_client_id')
+        if (userClientId) return userClientId
+    }
 
     throw new Error('No Spotify Client ID configured')
 }
 
-const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI ||
-    (typeof window !== 'undefined' ? `${window.location.origin}/callback` : 'http://localhost:3000/callback')
+// FIXED: Always use the same redirect URI
+const REDIRECT_URI = 'https://fuckspotify.netlify.app/callback'
 
 // Scopes we need for the app
 const SCOPES = [
@@ -74,10 +76,12 @@ export class SpotifyAuth {
     async redirectToSpotifyLogin(): Promise<void> {
         try {
             console.log('Starting Spotify login process...')
-            console.log('CLIENT_ID:', getClientId())
+
+            const clientId = getClientId() // Use dynamic client ID
+            console.log('CLIENT_ID:', clientId ? 'Found' : 'Missing')
             console.log('REDIRECT_URI:', REDIRECT_URI)
 
-            if (!getClientId()) {
+            if (!clientId) {
                 throw new Error('Spotify Client ID is not configured')
             }
 
@@ -89,9 +93,9 @@ export class SpotifyAuth {
 
             const params = new URLSearchParams({
                 response_type: 'code',
-                client_id: getClientId(),
+                client_id: clientId, // Use dynamic client ID
                 scope: SCOPES,
-                redirect_uri: REDIRECT_URI,
+                redirect_uri: REDIRECT_URI, // Fixed redirect URI
                 state: state,
                 code_challenge_method: 'S256',
                 code_challenge: codeChallenge,
@@ -131,6 +135,8 @@ export class SpotifyAuth {
         console.log('State and code verifier verified, exchanging code for token...')
 
         try {
+            const clientId = getClientId() // Use dynamic client ID
+
             // Exchange authorization code for access token using PKCE
             const response = await fetch('https://accounts.spotify.com/api/token', {
                 method: 'POST',
@@ -140,8 +146,8 @@ export class SpotifyAuth {
                 body: new URLSearchParams({
                     grant_type: 'authorization_code',
                     code: code,
-                    redirect_uri: REDIRECT_URI,
-                    client_id: getClientId(),
+                    redirect_uri: REDIRECT_URI, // Fixed redirect URI
+                    client_id: clientId, // Use dynamic client ID
                     code_verifier: codeVerifier,
                 }),
             })
@@ -180,7 +186,7 @@ export class SpotifyAuth {
             sessionStorage.removeItem('code_verifier')
 
             // Initialize Spotify API
-            this.api = SpotifyApi.withAccessToken(getClientId(), {
+            this.api = SpotifyApi.withAccessToken(clientId, {
                 access_token: tokenData.access_token,
                 token_type: 'Bearer',
                 expires_in: tokenData.expires_in,
@@ -231,6 +237,14 @@ export class SpotifyAuth {
             return null
         }
 
+        // Check if we have a client ID (needed for API initialization)
+        try {
+            const clientId = getClientId()
+        } catch (error) {
+            console.log('No client ID available for existing login check')
+            return null
+        }
+
         // Check if token is expired
         if (Date.now() > parseInt(expiresAt || '0')) {
             console.log('Token expired, attempting refresh...')
@@ -257,7 +271,8 @@ export class SpotifyAuth {
             return null
         }
 
-        this.api = SpotifyApi.withAccessToken(getClientId(), {
+        const clientId = getClientId()
+        this.api = SpotifyApi.withAccessToken(clientId, {
             access_token: currentAccessToken,
             token_type: 'Bearer',
             expires_in: 3600,
@@ -293,6 +308,8 @@ export class SpotifyAuth {
         console.log('Attempting to refresh Spotify token...')
 
         try {
+            const clientId = getClientId() // Use dynamic client ID
+
             const response = await fetch('https://accounts.spotify.com/api/token', {
                 method: 'POST',
                 headers: {
@@ -301,7 +318,7 @@ export class SpotifyAuth {
                 body: new URLSearchParams({
                     grant_type: 'refresh_token',
                     refresh_token: refreshToken,
-                    client_id: getClientId(),
+                    client_id: clientId, // Use dynamic client ID
                 }),
             })
 
