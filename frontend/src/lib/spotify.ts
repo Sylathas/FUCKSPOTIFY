@@ -2,7 +2,16 @@ import { SpotifyApi } from '@spotify/web-api-ts-sdk'
 import { SpotifyTrack, SpotifyAlbum, SpotifyPlaylist } from '@/types'
 
 // Spotify OAuth configuration - NO CLIENT SECRET NEEDED FOR PKCE
-const CLIENT_ID = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID!
+const getClientId = (): string => {
+    const envClientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID
+    if (envClientId) return envClientId
+
+    const userClientId = localStorage.getItem('spotify_user_client_id')
+    if (userClientId) return userClientId
+
+    throw new Error('No Spotify Client ID configured')
+}
+
 const REDIRECT_URI = process.env.NEXT_PUBLIC_REDIRECT_URI ||
     (typeof window !== 'undefined' ? `${window.location.origin}/callback` : 'http://localhost:3000/callback')
 
@@ -65,10 +74,10 @@ export class SpotifyAuth {
     async redirectToSpotifyLogin(): Promise<void> {
         try {
             console.log('Starting Spotify login process...')
-            console.log('CLIENT_ID:', CLIENT_ID)
+            console.log('CLIENT_ID:', getClientId())
             console.log('REDIRECT_URI:', REDIRECT_URI)
 
-            if (!CLIENT_ID) {
+            if (!getClientId()) {
                 throw new Error('Spotify Client ID is not configured')
             }
 
@@ -80,7 +89,7 @@ export class SpotifyAuth {
 
             const params = new URLSearchParams({
                 response_type: 'code',
-                client_id: CLIENT_ID,
+                client_id: getClientId(),
                 scope: SCOPES,
                 redirect_uri: REDIRECT_URI,
                 state: state,
@@ -132,7 +141,7 @@ export class SpotifyAuth {
                     grant_type: 'authorization_code',
                     code: code,
                     redirect_uri: REDIRECT_URI,
-                    client_id: CLIENT_ID,
+                    client_id: getClientId(),
                     code_verifier: codeVerifier,
                 }),
             })
@@ -171,7 +180,7 @@ export class SpotifyAuth {
             sessionStorage.removeItem('code_verifier')
 
             // Initialize Spotify API
-            this.api = SpotifyApi.withAccessToken(CLIENT_ID, {
+            this.api = SpotifyApi.withAccessToken(getClientId(), {
                 access_token: tokenData.access_token,
                 token_type: 'Bearer',
                 expires_in: tokenData.expires_in,
@@ -248,7 +257,7 @@ export class SpotifyAuth {
             return null
         }
 
-        this.api = SpotifyApi.withAccessToken(CLIENT_ID, {
+        this.api = SpotifyApi.withAccessToken(getClientId(), {
             access_token: currentAccessToken,
             token_type: 'Bearer',
             expires_in: 3600,
@@ -292,7 +301,7 @@ export class SpotifyAuth {
                 body: new URLSearchParams({
                     grant_type: 'refresh_token',
                     refresh_token: refreshToken,
-                    client_id: CLIENT_ID,
+                    client_id: getClientId(),
                 }),
             })
 

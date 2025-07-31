@@ -7,6 +7,244 @@ interface SpotifyLoginSectionProps {
     spotifyUser: any
 }
 
+// Auth Helper Functions
+const DynamicSpotifyAuth = {
+    getClientId(): string | null {
+        const envClientId = process.env.NEXT_PUBLIC_SPOTIFY_CLIENT_ID
+        if (envClientId) return envClientId
+
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('spotify_user_client_id')
+        }
+        return null
+    },
+
+    hasCredentials(): boolean {
+        return this.getClientId() !== null
+    },
+
+    getRedirectUri(): string {
+        if (typeof window === 'undefined') return 'http://localhost:3000/callback'
+        return `${window.location.origin}/callback`
+    }
+}
+
+// Overlay Component
+function SpotifySetupOverlay({ isMobile, onClose, onSetupComplete }: {
+    isMobile: boolean
+    onClose: () => void
+    onSetupComplete: () => void
+}) {
+    const [clientId, setClientId] = useState('')
+    const [currentStep, setCurrentStep] = useState(0)
+
+    const disclaimers = [
+        {
+            title: 'The Streaming Economics Reality',
+            content: `The "pay per stream" metric is misleading. Artists are paid from a pool system where ~65% of Spotify's revenue (11B+ in 2024) goes to distributors and labels, then trickles down to artists. With 20k+ new songs added daily, AI-generated content increasingly dilutes this pool, reducing payments even if your streams stay constant. Streaming simply isn't viable for most artists.`,
+            link: { url: 'https://musically.com/2020/05/05/spotify-should-pay-musicians-more-lets-talk-about-how/', text: 'Learn more about streaming economics' }
+        },
+        {
+            title: 'The AI Warfare Connection',
+            content: `Spotify CEO Daniel Ek's investment company Prima Materia invested 600M in Helsing AI, an AI warfare technology company. While they claim to only work with "democracies" (self-defined), this connects music streaming profits to military technology. Artists earn pennies while platforms invest in warfare systems.`,
+            link: null
+        },
+        {
+            title: 'Why This Matters',
+            content: `Moving away from Spotify isn't just about music: it's about where your money goes. When done at scale, platform migration demonstrates consumer power and can influence corporate priorities. This tool helps you reclaim control over your music and your values.`,
+            link: null
+        }
+    ]
+
+    const steps = [
+        {
+            title: "Go to Spotify Developer Dashboard",
+            content: "Visit developer.spotify.com/dashboard and log in with your Spotify account",
+            action: (
+                <a
+                    href="https://developer.spotify.com/dashboard"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm inline-block"
+                >
+                    Open Spotify Dashboard
+                </a>
+            )
+        },
+        {
+            title: "Create a New App",
+            content: "Click 'Create App' and use any name (e.g., 'My Music Transfer')",
+            action: (
+                <div className="text-gray-400 text-sm">
+                    Suggested name: "Personal Music Transfer Tool"
+                </div>
+            )
+        },
+        {
+            title: "Add Redirect URI",
+            content: "In your app settings, add this exact Redirect URI:",
+            action: (
+                <div className="space-y-2">
+                    <div className="bg-gray-800 p-2 rounded font-mono text-sm text-green-400 border">
+                        {typeof window !== 'undefined' ? `${window.location.origin}/callback` : ''}
+                    </div>
+                    <button
+                        onClick={() => {
+                            if (typeof window !== 'undefined') {
+                                navigator.clipboard.writeText(`${window.location.origin}/callback`)
+                                alert('Copied to clipboard!')
+                            }
+                        }}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs"
+                    >
+                        Copy URI
+                    </button>
+                </div>
+            )
+        },
+        {
+            title: "Get Your Client ID",
+            content: "Copy the Client ID from your app dashboard (NOT the Client Secret)",
+            action: (
+                <div className="space-y-2">
+                    <input
+                        type="text"
+                        value={clientId}
+                        onChange={(e) => setClientId(e.target.value)}
+                        placeholder="Paste your Client ID here"
+                        className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white text-sm"
+                    />
+                    <button
+                        onClick={() => {
+                            if (clientId.trim()) {
+                                localStorage.setItem('spotify_user_client_id', clientId.trim())
+                                onSetupComplete()
+                                onClose()
+                            }
+                        }}
+                        disabled={!clientId.trim()}
+                        className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded w-full"
+                    >
+                        Save & Start Using App
+                    </button>
+                </div>
+            )
+        }
+    ]
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-50 p-4">
+            <div className={`bg-gray-900 rounded-lg border border-gray-700 max-w-6xl w-full max-h-[90vh] overflow-hidden ${isMobile ? 'flex flex-col' : 'flex flex-row'}`}>
+
+                {/* Close button */}
+                <button
+                    onClick={onClose}
+                    className="absolute top-4 right-4 text-gray-400 hover:text-white text-xl z-10"
+                >
+                    ×
+                </button>
+
+                {/* Left side - Disclaimers (Desktop) / Top (Mobile) */}
+                <div className={`${isMobile ? 'w-full' : 'w-1/2'} p-6 ${isMobile ? 'border-b border-gray-700 max-h-[40vh] overflow-y-auto' : 'border-r border-gray-700'}`}>
+                    <h3 className="text-xl text-yellow-400 font-bold mb-2">Why FuckSpotify?</h3>
+                    <p className="text-gray-300 text-sm mb-4">
+                        Spotify won't expand my app's userbase (though I'm working on it), so you'll need to create your own Spotify app. Here's why it's worth the 2-minute setup:
+                    </p>
+
+                    <div className="space-y-4">
+                        {disclaimers.map((disclaimer, index) => (
+                            <div key={index} className="border border-gray-600 rounded p-3">
+                                <h4 className="text-white font-medium mb-2 text-sm">
+                                    {disclaimer.title}
+                                </h4>
+                                <p className="text-gray-400 text-xs leading-relaxed mb-2">
+                                    {disclaimer.content}
+                                </p>
+                                {disclaimer.link && (
+                                    <a
+                                        href={disclaimer.link.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-block text-blue-400 hover:text-blue-300 text-xs underline"
+                                    >
+                                        {disclaimer.link.text}
+                                    </a>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Right side - Setup (Desktop) / Bottom (Mobile) */}
+                <div className={`${isMobile ? 'w-full flex-1' : 'w-1/2'} p-6 ${isMobile ? 'overflow-y-auto' : ''}`}>
+                    <h3 className="text-xl text-green-400 font-bold mb-2">Quick Spotify Setup</h3>
+                    <p className="text-gray-300 mb-4 text-sm">
+                        Create your personal Spotify app while I work on getting the main app approved (2 minutes, one-time setup)
+                    </p>
+
+                    {/* Progress bar */}
+                    <div className="mb-6">
+                        <div className="flex justify-between mb-2">
+                            {steps.map((_, index) => (
+                                <div
+                                    key={index}
+                                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm ${index <= currentStep
+                                        ? 'bg-green-600 text-white'
+                                        : 'bg-gray-700 text-gray-400'
+                                        }`}
+                                >
+                                    {index + 1}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="w-full bg-gray-700 rounded-full h-2">
+                            <div
+                                className="bg-green-600 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Current step */}
+                    <div className="border border-gray-700 rounded-lg p-4 mb-4">
+                        <h4 className="text-white font-medium mb-2 text-sm">
+                            Step {currentStep + 1}: {steps[currentStep].title}
+                        </h4>
+                        <p className="text-gray-400 mb-3 text-sm">{steps[currentStep].content}</p>
+                        {steps[currentStep].action}
+                    </div>
+
+                    {/* Navigation */}
+                    <div className="flex justify-between">
+                        <button
+                            onClick={() => setCurrentStep(Math.max(0, currentStep - 1))}
+                            disabled={currentStep === 0}
+                            className="bg-gray-600 hover:bg-gray-700 disabled:bg-gray-800 text-white px-4 py-2 rounded text-sm"
+                        >
+                            Previous
+                        </button>
+                        <button
+                            onClick={() => setCurrentStep(Math.min(steps.length - 1, currentStep + 1))}
+                            disabled={currentStep === steps.length - 1}
+                            className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-800 text-white px-4 py-2 rounded text-sm"
+                        >
+                            Next
+                        </button>
+                    </div>
+
+                    <div className="mt-4 pt-4 border-t border-gray-700">
+                        <h5 className="text-yellow-400 text-sm mb-2">Privacy & Security</h5>
+                        <p className="text-gray-400 text-xs leading-relaxed">
+                            Your credentials stay on your device and only connect to YOUR Spotify account.
+                            This setup gives you a personal app with no rate limits or restrictions.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    )
+}
+
 export default function SpotifyLoginSection({
     isMobile,
     onLogin,
@@ -14,8 +252,7 @@ export default function SpotifyLoginSection({
 }: SpotifyLoginSectionProps) {
     const [isCheckingAuth, setIsCheckingAuth] = useState(false)
     const [authError, setAuthError] = useState<string | null>(null)
-    const [showDevModeNotice, setShowDevModeNotice] = useState(false)
-    const [userEmail, setUserEmail] = useState('')
+    const [showOverlay, setShowOverlay] = useState(false)
 
     // Check for existing authentication when component loads
     useEffect(() => {
@@ -79,18 +316,38 @@ export default function SpotifyLoginSection({
     }, [onLogin, spotifyUser, isMobile])
 
     const handleLogin = async () => {
-        // Show development mode notice instead of trying to login
-        setShowDevModeNotice(true)
-    }
+        const clientId = DynamicSpotifyAuth.getClientId()
 
-    const handleActualLogin = async () => {
+        if (!clientId) {
+            // Show setup overlay instead of trying to login
+            setShowOverlay(true)
+            return
+        }
+
         try {
-            console.log('Starting Spotify login...')
+            console.log('Starting Spotify login with credentials...')
             setAuthError(null)
-            setShowDevModeNotice(false)
 
-            spotifyAuth.logout()
-            localStorage.removeItem('spotify_user')
+            // Your existing login logic with dynamic client ID
+            const redirectUri = DynamicSpotifyAuth.getRedirectUri()
+
+            const state = generateRandomString(16)
+            sessionStorage.setItem('spotify_auth_state', state)
+
+            const codeVerifier = generateRandomString(128)
+            sessionStorage.setItem('code_verifier', codeVerifier)
+
+            const codeChallenge = await generateCodeChallenge(codeVerifier)
+
+            const params = new URLSearchParams({
+                response_type: 'code',
+                client_id: clientId,
+                scope: 'user-read-private user-read-email user-library-read playlist-read-private playlist-read-collaborative',
+                redirect_uri: redirectUri,
+                state: state,
+                code_challenge_method: 'S256',
+                code_challenge: codeChallenge,
+            })
 
             if (isMobile) {
                 localStorage.setItem('spotify_login_started', 'true')
@@ -98,12 +355,12 @@ export default function SpotifyLoginSection({
                 await new Promise(resolve => setTimeout(resolve, 100))
             }
 
-            await spotifyAuth.redirectToSpotifyLogin()
+            const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`
+            window.location.href = authUrl
+
         } catch (error) {
             console.error('Login failed:', error)
-            setAuthError(`Login failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
-            localStorage.removeItem('spotify_login_started')
-            localStorage.removeItem('spotify_login_timestamp')
+            setAuthError(`Login failed: ${error instanceof Error ? error.message : 'Setup might be needed'}`)
         }
     }
 
@@ -123,32 +380,16 @@ export default function SpotifyLoginSection({
         if (spotifyUser) {
             handleLogout()
         } else {
-            handleLogin() // This now shows the notice first
+            handleLogin() // This will show overlay if no credentials
         }
     }
 
-    const handleRequestAccess = () => {
-        if (userEmail.trim()) {
-            // Create mailto link for easy contact
-            const subject = encodeURIComponent('FuckSpotify App Access Request')
-            const body = encodeURIComponent(`Hi!
-
-I'd like access to the FuckSpotify music transfer app.
-
-My Spotify email: ${userEmail.trim()}
-
-Please add me to the allowed users list.
-
-Thanks!`)
-
-            const mailtoLink = `mailto:abate.niccolo@gmail.com?subject=${subject}&body=${body}`
-            window.open(mailtoLink)
-
-            setShowDevModeNotice(false)
-            setUserEmail('')
-        }
+    const handleSetupComplete = () => {
+        // Credentials are now saved, user can try actual login
+        handleLogin()
     }
 
+    // Determine which image to show (SAME AS ORIGINAL)
     const buttonImage = spotifyUser ? "/Buttons/Logout.png" : "/Buttons/Login.png"
     const buttonAlt = spotifyUser ? "Logout from Spotify" : "Login to Spotify"
     const buttonTitle = spotifyUser
@@ -156,125 +397,87 @@ Thanks!`)
         : (isCheckingAuth ? 'Checking authentication...' : 'Login to Spotify')
 
     return (
-        <div
-            className={`
-                relative bg-cover bg-center bg-no-repeat
-                flex flex-col items-center justify-center
-                ${isMobile ? 'h-[200px]' : 'h-full'}
-            `}
-            style={{
-                backgroundImage: "url('/Buttons/UI_Background.png')",
-                backgroundSize: '100% 100%'
-            }}
-        >
-            {/* Development Mode Notice Modal */}
-            {showDevModeNotice && (
-                <div className="absolute inset-0 bg-black bg-opacity-90 flex items-center justify-center z-20 p-4">
-                    <div className="bg-gray-900 rounded-lg p-6 max-w-md w-full border border-yellow-600">
-                        <div className="text-center mb-4">
-                            <div className="text-4xl mb-2">⚠️</div>
-                            <h3 className="text-yellow-400 font-bold text-lg">App in Development Mode</h3>
-                        </div>
-
-                        <div className="text-gray-300 text-sm space-y-3 mb-6">
-                            <p>
-                                This app is currently in Spotify's development mode, which means only pre-approved users can log in.
-                            </p>
-                            <p>
-                                <strong className="text-yellow-400">Why?</strong> Spotify requires manual approval for apps with... creative names like this lol
-                            </p>
-                            <p>
-                                <strong className="text-green-400">Solution:</strong> Send me your Spotify email and I'll add you to the approved users list!
-                            </p>
-                        </div>
-
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-gray-300 text-sm mb-2">
-                                    Your Spotify email address:
-                                </label>
-                                <input
-                                    type="email"
-                                    value={userEmail}
-                                    onChange={(e) => setUserEmail(e.target.value)}
-                                    placeholder="your@email.com"
-                                    className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded text-white text-sm"
-                                />
-                            </div>
-
-                            <div className="flex space-x-2">
-                                <button
-                                    onClick={handleRequestAccess}
-                                    disabled={!userEmail.trim()}
-                                    className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-4 py-2 rounded text-sm"
-                                >
-                                    Request Access
-                                </button>
-                                <button
-                                    onClick={handleActualLogin}
-                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm"
-                                >
-                                    Try Anyway
-                                </button>
-                            </div>
-
-                            <button
-                                onClick={() => setShowDevModeNotice(false)}
-                                className="w-full bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded text-sm"
-                            >
-                                Cancel
-                            </button>
-                        </div>
-
-                        <div className="mt-4 pt-4 border-t border-gray-700">
-                            <p className="text-gray-400 text-xs text-center">
-                                Make sure to use the same email as your Spotify account
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Loading indicator during auth check */}
-            {isCheckingAuth && (
-                <div className="absolute top-2 right-2">
-                    <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
-                </div>
-            )}
-
-            {/* Error message */}
-            {authError && (
-                <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-xs p-2 text-center">
-                    {authError}
-                    <button
-                        onClick={() => setAuthError(null)}
-                        className="ml-2 text-red-200 hover:text-white"
-                    >
-                        ×
-                    </button>
-                </div>
-            )}
-
-            {/* Main login/logout button */}
-            <img
-                src={buttonImage}
-                alt={buttonAlt}
-                onClick={handleButtonClick}
+        <>
+            {/* EXACT SAME UI AS ORIGINAL */}
+            <div
                 className={`
-                    ${isMobile ? 'w-[80%] h-auto' : 'w-[90%] h-[20%]'}
-                    transition-opacity
-                    ${isCheckingAuth ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
+                    relative bg-cover bg-center bg-no-repeat
+                    flex flex-col items-center justify-center
+                    ${isMobile ? 'h-[200px]' : 'h-full'}
                 `}
-                title={buttonTitle}
-            />
+                style={{
+                    backgroundImage: "url('/Buttons/UI_Background.png')",
+                    backgroundSize: '100% 100%'
+                }}
+            >
+                {/* Loading indicator during auth check */}
+                {isCheckingAuth && (
+                    <div className="absolute top-2 right-2">
+                        <div className="w-3 h-3 bg-yellow-400 rounded-full animate-pulse" />
+                    </div>
+                )}
 
-            {/* Status text for logged in user */}
-            {spotifyUser && (
-                <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 
-                             text-xs text-green-400 bg-black bg-opacity-50 px-2 py-1 rounded">
-                    {spotifyUser.name}
-                </div>
+                {/* Error message */}
+                {authError && (
+                    <div className="absolute top-0 left-0 right-0 bg-red-600 text-white text-xs p-2 text-center">
+                        {authError}
+                        <button
+                            onClick={() => setAuthError(null)}
+                            className="ml-2 text-red-200 hover:text-white"
+                        >
+                            ×
+                        </button>
+                    </div>
+                )}
+
+                {/* Main login/logout button - EXACTLY LIKE ORIGINAL */}
+                <img
+                    src={buttonImage}
+                    alt={buttonAlt}
+                    onClick={handleButtonClick}
+                    className={`
+                        ${isMobile ? 'w-[80%] h-auto' : 'w-[90%] h-[20%]'}
+                        transition-opacity
+                        ${isCheckingAuth ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
+                    `}
+                    title={buttonTitle}
+                />
+
+                {/* Status text for logged in user */}
+                {spotifyUser && (
+                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 
+                                 text-xs text-green-400 bg-black bg-opacity-50 px-2 py-1 rounded">
+                        {spotifyUser.name}
+                    </div>
+                )}
+            </div>
+
+            {/* Setup Overlay */}
+            {showOverlay && (
+                <SpotifySetupOverlay
+                    isMobile={isMobile}
+                    onClose={() => setShowOverlay(false)}
+                    onSetupComplete={handleSetupComplete}
+                />
             )}
-        </div>
+        </>
     )
+}
+
+// Helper functions
+function generateRandomString(length: number): string {
+    let text = ''
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+    for (let i = 0; i < length; i++) {
+        text += possible.charAt(Math.floor(Math.random() * possible.length))
+    }
+    return text
+}
+
+async function generateCodeChallenge(codeVerifier: string): Promise<string> {
+    const encoder = new TextEncoder()
+    const data = encoder.encode(codeVerifier)
+    const digest = await crypto.subtle.digest('SHA-256', data)
+    const base64String = btoa(String.fromCharCode(...new Uint8Array(digest)))
+    return base64String.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
 }
