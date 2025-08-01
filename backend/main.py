@@ -11,10 +11,12 @@ from tidalapi import Config
 
 # Import your library functions
 from sync import sync_playlist, tidal_search_single
+from cache import failure_cache, track_match_cache, get_cache_summary, cleanup_caches
 
 # --- In-memory stores ---
 pending_logins: Dict[str, Tuple[tidalapi.Session, Any]] = {}
 transfer_progress: Dict[str, Dict[str, Any]] = {}
+failure_reports: Dict[str, Dict[str, Any]] = {}
 
 # --- Performance Configuration (No external files needed) ---
 def get_performance_config():
@@ -122,6 +124,20 @@ class ProgressResponse(BaseModel):
     current_playlist: Optional[str] = None
     estimated_time_remaining: Optional[int] = None
 
+class FailureReport(BaseModel):
+    platform: str
+    failed_songs: List[str]
+    failed_albums: List[str] 
+    failed_playlists: Dict[str, List[str]]
+    total_failures: int
+
+class PlatformConfig(BaseModel):
+    name: str
+    requires_auth: bool
+    supports_progress: bool
+    api_endpoint: Optional[str] = None
+    auth_method: Optional[str] = None
+
 # --- FastAPI App Setup ---
 app = FastAPI()
 app.add_middleware(
@@ -131,6 +147,47 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+PLATFORM_CONFIGS = {
+    'TIDAL': {
+        'name': 'Tidal',
+        'requires_auth': True,
+        'supports_progress': True,
+        'api_endpoint': '/api/transfer',
+        'auth_method': 'oauth',
+        'handler': 'tidal_handler'
+    },
+    'BANDCAMP': {
+        'name': 'Bandcamp', 
+        'requires_auth': False,
+        'supports_progress': False,
+        'handler': 'bandcamp_handler'
+    },
+    'APPLE_MUSIC': {
+        'name': 'Apple Music',
+        'requires_auth': True,
+        'supports_progress': True,
+        'api_endpoint': '/api/apple-music/transfer',
+        'auth_method': 'oauth',
+        'handler': 'apple_music_handler'  # For future implementation
+    },
+    'SOUNDCLOUD': {
+        'name': 'SoundCloud',
+        'requires_auth': True,
+        'supports_progress': True,
+        'api_endpoint': '/api/soundcloud/transfer', 
+        'auth_method': 'oauth',
+        'handler': 'soundcloud_handler'  # For future implementation
+    },
+    'YOUTUBE_MUSIC': {
+        'name': 'YouTube Music',
+        'requires_auth': True,
+        'supports_progress': True,
+        'api_endpoint': '/api/youtube-music/transfer',
+        'auth_method': 'oauth', 
+        'handler': 'youtube_music_handler'  # For future implementation
+    }
+}
 
 # --- Helper Functions ---
 def get_tidal_session(token: str) -> tidalapi.Session:
@@ -142,8 +199,9 @@ def get_tidal_session(token: str) -> tidalapi.Session:
     return session
 
 def update_progress(transfer_id: str, status: str, step: str, progress: int, 
-                   completed: int = 0, total: int = 0, current_playlist: str = None):
-    """Update progress for a transfer operation."""
+                   completed: int = 0, total: int = 0, current_playlist: str = None,
+                   failed_items: dict = None):
+    """Enhanced progress update with failure tracking."""
     transfer_progress[transfer_id] = {
         "status": status,
         "current_step": step,
@@ -153,6 +211,36 @@ def update_progress(transfer_id: str, status: str, step: str, progress: int,
         "current_playlist": current_playlist,
         "last_updated": time.time()
     }
+    
+    # Track failures if provided
+    if failed_items:
+        if transfer_id not in failure_reports:
+            failure_reports[transfer_id] = {
+                "platform": "Tidal",  # Default, can be made dynamic
+                "failed_songs": [],
+                "failed_albums": [],
+                "failed_playlists": {},
+                "total_failures": 0
+            }
+        
+        # Merge failure data
+        report = failure_reports[transfer_id]
+        if 'songs' in failed_items:
+            report["failed_songs"].extend(failed_items['songs'])
+        if 'albums' in failed_items:
+            report["failed_albums"].extend(failed_items['albums'])
+        if 'playlists' in failed_items:
+            for playlist_name, failed_tracks in failed_items['playlists'].items():
+                if playlist_name not in report["failed_playlists"]:
+                    report["failed_playlists"][playlist_name] = []
+                report["failed_playlists"][playlist_name].extend(failed_tracks)
+        
+        # Update total count
+        report["total_failures"] = (
+            len(report["failed_songs"]) + 
+            len(report["failed_albums"]) + 
+            sum(len(tracks) for tracks in report["failed_playlists"].values())
+        )
 
 # --- Authentication Endpoints ---
 @app.get("/api/tidal/initiate-login", response_model=LoginInitResponse)
@@ -201,7 +289,7 @@ async def verify_tidal_login(request: LoginVerifyRequest):
 # --- Transfer Endpoints ---
 @app.post("/api/like/songs")
 async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = Header(...)):
-    """Like songs on Tidal."""
+    """Like songs on Tidal with enhanced failure tracking and statistics."""
     token = authorization.split(" ")[1]
     tidal_session = get_tidal_session(token)
     liked_count = 0
@@ -209,22 +297,40 @@ async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = He
     
     print(f"Starting to like {len(request.tracks)} songs on Tidal")
     
+    # Record initial statistics
+    total_attempted = len(request.tracks)
+    
     for i, track_data in enumerate(request.tracks):
         try:
-            tidal_track = await tidal_search_single(track_data.dict(), tidal_session)
+            track_dict = track_data.dict()
+            tidal_track = await tidal_search_single(track_dict, tidal_session)
+            
             if tidal_track:
-                # FIX: Convert to string, don't pass as list
                 await asyncio.to_thread(tidal_session.user.favorites.add_track, str(tidal_track.id))
                 liked_count += 1
                 print(f"✓ Liked ({i+1}/{len(request.tracks)}): {track_data.name}")
             else:
-                failed_msg = f"Not found: {track_data.name}"
+                artist_names = ', '.join([artist.name for artist in track_data.artists])
+                failed_msg = f"{track_data.name} - {artist_names}"
                 failed_tracks.append(failed_msg)
-                print(f"✗ {failed_msg}")
+                print(f"✗ Not found: {failed_msg}")
         except Exception as e:
-            error_msg = f"Failed to like '{track_data.name}': {str(e)}"
+            artist_names = ', '.join([artist.name for artist in track_data.artists])
+            error_msg = f"{track_data.name} - {artist_names} (Error: {str(e)})"
             failed_tracks.append(error_msg)
-            print(f"✗ {error_msg}")
+            
+            # Cache the failure with error message
+            if track_data.id:
+                failure_cache.cache_match_failure(track_data.id, str(e))
+            
+            print(f"✗ Failed to like: {error_msg}")
+    
+    # Record transfer statistics
+    failure_cache.record_transfer_stats(
+        platform="Tidal",
+        tracks_attempted=total_attempted,
+        tracks_successful=liked_count
+    )
     
     result_msg = f"Successfully liked {liked_count}/{len(request.tracks)} songs."
     print(f"✓ Song liking completed: {result_msg}")
@@ -232,12 +338,15 @@ async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = He
     return {
         "status": "success", 
         "message": result_msg,
-        "failed": failed_tracks
+        "failed": failed_tracks,
+        "success_count": liked_count,
+        "total_count": len(request.tracks),
+        "success_rate": (liked_count / len(request.tracks)) * 100 if request.tracks else 0
     }
 
 @app.post("/api/add/albums")
 async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = Header(...)):
-    """Add albums to Tidal favorites."""
+    """Add albums to Tidal favorites with enhanced failure tracking."""
     token = authorization.split(" ")[1]
     tidal_session = get_tidal_session(token)
     added_count = 0
@@ -254,18 +363,19 @@ async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = He
             
             if search_results['albums']:
                 tidal_album_id = search_results['albums'][0].id
-                # FIX: Convert to string, don't pass as list
                 await asyncio.to_thread(tidal_session.user.favorites.add_album, str(tidal_album_id))
                 added_count += 1
                 print(f"✓ Added ({i+1}/{len(request.albums)}): {album_data.name}")
             else:
-                failed_msg = f"Not found: {album_data.name}"
+                artist_names = ', '.join([artist.name for artist in album_data.artists])
+                failed_msg = f"{album_data.name} - {artist_names}"
                 failed_albums.append(failed_msg)
-                print(f"✗ {failed_msg}")
+                print(f"✗ Not found: {failed_msg}")
         except Exception as e:
-            error_msg = f"Failed to add '{album_data.name}': {str(e)}"
+            artist_names = ', '.join([artist.name for artist in album_data.artists])
+            error_msg = f"{album_data.name} - {artist_names} (Error: {str(e)})"
             failed_albums.append(error_msg)
-            print(f"✗ {error_msg}")
+            print(f"✗ Failed to add: {error_msg}")
     
     result_msg = f"Successfully added {added_count}/{len(request.albums)} albums."
     print(f"✓ Album adding completed: {result_msg}")
@@ -273,30 +383,40 @@ async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = He
     return {
         "status": "success", 
         "message": result_msg,
-        "failed": failed_albums
+        "failed": failed_albums,
+        "success_count": added_count,
+        "total_count": len(request.albums)
     }
 
 # --- Playlist Transfer with Progress Tracking ---
 async def run_playlist_transfer_process_async(token: str, playlists: List[dict], transfer_id: str):
-    """Async background task for transferring playlists with full metadata support."""
+    """Enhanced async background task with comprehensive cache integration."""
     try:
         print(f"🎵 Starting enhanced playlist transfer process: {transfer_id}")
         tidal_session = get_tidal_session(token)
         config_obj, config_dict = get_tidal_config()
         
         total_playlists = len(playlists)
+        
+        # Create transfer report in cache
+        total_songs = sum(len(p.get('tracks', [])) for p in playlists)
+        failure_cache.create_transfer_report(
+            transfer_id=transfer_id,
+            platform="Tidal",
+            total_songs=total_songs,
+            total_playlists=total_playlists
+        )
+        
         update_progress(transfer_id, "running", "Starting transfer", 0, 0, total_playlists)
+        
+        playlist_failures = {}
+        successful_playlists = 0
         
         for i, playlist_data in enumerate(playlists):
             playlist_name = playlist_data.get('name', f'Playlist {i+1}')
-            playlist_description = playlist_data.get('description', '')
-            playlist_cover = playlist_data.get('coverImage')
             track_count = len(playlist_data.get('tracks', []))
             
             print(f"🔄 Processing playlist {i+1}/{total_playlists}: {playlist_name}")
-            print(f"   📊 {track_count} tracks")
-            print(f"   📝 Description: {playlist_description[:50] + '...' if playlist_description else 'None'}")
-            print(f"   🖼️  Cover: {'Yes' if playlist_cover else 'None'}")
             
             update_progress(
                 transfer_id, "running", 
@@ -305,17 +425,78 @@ async def run_playlist_transfer_process_async(token: str, playlists: List[dict],
                 i, total_playlists, playlist_name
             )
             
-            # Now properly awaited
-            await sync_playlist(tidal_session, playlist_data, config_dict)
+            # Track initial failed track count
+            spotify_tracks = playlist_data.get('tracks', [])
+            initial_cache_failures = len([
+                t for t in spotify_tracks 
+                if failure_cache.has_match_failure(t.get('id', ''))
+            ])
+            
+            try:
+                # Process the playlist
+                await sync_playlist(tidal_session, playlist_data, config_dict)
+                
+                # Check for new failures after processing
+                final_failed_tracks = []
+                for track in spotify_tracks:
+                    track_id = track.get('id', '')
+                    if track_id and failure_cache.has_match_failure(track_id):
+                        artist_names = ', '.join([artist.get('name', '') for artist in track.get('artists', [])])
+                        final_failed_tracks.append(f"{track.get('name', 'Unknown')} - {artist_names}")
+                
+                if final_failed_tracks:
+                    playlist_failures[playlist_name] = final_failed_tracks
+                    print(f"⚠️  {len(final_failed_tracks)} tracks failed in playlist '{playlist_name}'")
+                else:
+                    successful_playlists += 1
+                    print(f"✅ All tracks found for playlist '{playlist_name}'")
+                
+            except Exception as e:
+                print(f"❌ Failed to process playlist '{playlist_name}': {e}")
+                playlist_failures[playlist_name] = [f"Failed to create playlist: {str(e)}"]
             
             print(f"✅ Completed playlist: {playlist_name}")
         
-        print(f"🎉 All playlists transferred successfully: {transfer_id}")
-        update_progress(transfer_id, "completed", "All playlists transferred", 100, total_playlists, total_playlists)
+        # Update transfer report with final results
+        failure_cache.update_transfer_failures(
+            transfer_id=transfer_id,
+            failed_playlists=playlist_failures
+        )
+        
+        failure_cache.complete_transfer_report(
+            transfer_id=transfer_id,
+            status="completed"
+        )
+        
+        # Record final statistics
+        failure_cache.record_transfer_stats(
+            platform="Tidal",
+            playlists_attempted=total_playlists,
+            playlists_successful=successful_playlists
+        )
+        
+        # Update final progress
+        failed_items = {"playlists": playlist_failures} if playlist_failures else None
+        update_progress(
+            transfer_id, "completed", "All playlists transferred", 100, 
+            total_playlists, total_playlists, failed_items=failed_items
+        )
+        
+        print(f"🎉 Transfer completed: {transfer_id}")
+        if playlist_failures:
+            total_failed = sum(len(tracks) for tracks in playlist_failures.values())
+            print(f"⚠️  Total failed tracks: {total_failed}")
         
     except Exception as e:
         error_msg = f"Transfer failed: {str(e)}"
         print(f"❌ BACKGROUND TASK ERROR: {error_msg}")
+        
+        # Mark transfer as failed in cache
+        failure_cache.complete_transfer_report(
+            transfer_id=transfer_id,
+            status="failed"
+        )
+        
         update_progress(transfer_id, "failed", error_msg, 0, 0, len(playlists))
 
 def run_playlist_transfer_process(token: str, playlists: List[dict], transfer_id: str):
@@ -374,18 +555,77 @@ async def get_transfer_progress(transfer_id: str):
         current_playlist=progress.get("current_playlist")
     )
 
+@app.get("/api/cache/summary")
+async def get_cache_summary_endpoint():
+    """Get comprehensive cache statistics and summary."""
+    summary = get_cache_summary()
+    
+    # Add success rates for different platforms
+    success_rates = {}
+    for platform in ['Tidal', 'Bandcamp']:  # Add more as you implement them
+        rates = failure_cache.get_success_rates(platform=platform, days=30)
+        if not rates.get('no_data'):
+            success_rates[platform] = rates
+    
+    summary['success_rates'] = success_rates
+    return summary
+
+@app.post("/api/cache/cleanup")
+async def cleanup_cache_data(days: int = 30):
+    """Clean up old cache data."""
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=400, detail="Days must be between 1 and 365")
+    
+    result = cleanup_caches(days)
+    return {
+        "message": f"Cache cleanup completed for data older than {days} days",
+        **result
+    }
+
+@app.get("/api/cache/failures/{track_id}")
+async def get_track_failure_info(track_id: str):
+    """Get detailed failure information for a specific track."""
+    failure_info = failure_cache.get_failure_info(track_id)
+    
+    if not failure_info:
+        return {"track_id": track_id, "has_failures": False}
+    
+    return {
+        "track_id": track_id,
+        "has_failures": True,
+        **failure_info
+    }
+
+@app.delete("/api/cache/failures/{track_id}")
+async def clear_track_failure(track_id: str):
+    """Clear failure cache for a specific track (allow retry)."""
+    failure_cache.remove_match_failure(track_id)
+    track_match_cache.remove(track_id)
+    
+    return {"message": f"Failure cache cleared for track {track_id}"}
+
 # --- Health Check Endpoint ---
 @app.get("/api/health")
 async def health_check():
-    """Simple health check endpoint."""
+    """Enhanced health check with comprehensive cache statistics."""
     config = get_performance_config()
+    cache_summary = get_cache_summary()
+    
     return {
         "status": "healthy",
         "config_loaded": True,
         "active_transfers": len(transfer_progress),
         "pending_logins": len(pending_logins),
+        "failure_reports": len(failure_reports),
+        "supported_platforms": list(PLATFORM_CONFIGS.keys()),
         "search_batch_size": config["search_batch_size"],
-        "max_concurrency": config["max_concurrency"]
+        "max_concurrency": config["max_concurrency"],
+        "cache_stats": {
+            "track_cache_size": cache_summary["track_cache"]["total_cached"],
+            "track_cache_hit_rate": cache_summary["track_cache"]["hit_rate_percent"],
+            "active_failures": cache_summary["failure_stats"]["active_failures"],
+            "total_recent_failures": cache_summary["failure_stats"]["total_failures_in_period"]
+        }
     }
 
 # --- Root endpoint ---
@@ -404,6 +644,55 @@ async def root():
             "transfer_playlists": "/api/transfer/playlists",
             "progress": "/api/transfer/progress/{transfer_id}"
         }
+    }
+
+# -- Failure endpoint --
+@app.get("/api/transfer/failures/{transfer_id}", response_model=FailureReport)
+async def get_failure_report(transfer_id: str):
+    """Get comprehensive failure report using cache data."""
+    
+    # Try to get from cache first (more detailed)
+    cache_report = failure_cache.get_transfer_report(transfer_id)
+    
+    if cache_report:
+        return FailureReport(
+            platform=cache_report["platform"],
+            failed_songs=cache_report["failed_songs"],
+            failed_albums=cache_report["failed_albums"],
+            failed_playlists=cache_report["failed_playlists"],
+            total_failures=cache_report["total_failures"]
+        )
+    
+    # Fallback to memory store if not in cache
+    if transfer_id not in failure_reports:
+        if transfer_id not in transfer_progress:
+            raise HTTPException(status_code=404, detail="Transfer not found")
+        
+        return FailureReport(
+            platform="Tidal",
+            failed_songs=[],
+            failed_albums=[], 
+            failed_playlists={},
+            total_failures=0
+        )
+    
+    report = failure_reports[transfer_id]
+    return FailureReport(
+        platform=report["platform"],
+        failed_songs=report["failed_songs"],
+        failed_albums=report["failed_albums"],
+        failed_playlists=report["failed_playlists"],
+        total_failures=report["total_failures"]
+    )
+
+# -- Platform endpoint --
+@app.get("/api/platforms")
+async def get_platform_configs():
+    """Get available platform configurations for frontend."""
+    return {
+        "platforms": PLATFORM_CONFIGS,
+        "supported": list(PLATFORM_CONFIGS.keys()),
+        "active": ["TIDAL", "BANDCAMP"]  # Currently implemented platforms
     }
 
 if __name__ == "__main__":

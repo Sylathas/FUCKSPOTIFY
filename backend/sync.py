@@ -75,8 +75,23 @@ async def tidal_search_batch(spotify_tracks: List[dict], tidal_session: tidalapi
     return results
 
 async def tidal_search_single(spotify_track: dict, tidal_session: tidalapi.Session) -> tidalapi.Track | None:
-    """Search for a single spotify track on Tidal."""
+    """Enhanced search for a single spotify track on Tidal with better failure tracking."""
     track_name = simple(spotify_track['name'])
+    track_id = spotify_track.get('id', '')
+    
+    # Check if we already know this track failed
+    if track_id and failure_cache.has_match_failure(track_id):
+        return None
+    
+    # Check if we already found a match for this track
+    if track_id and track_match_cache.get(track_id):
+        try:
+            # Try to get the cached Tidal track
+            cached_tidal_id = track_match_cache.get(track_id)
+            # I might want to add a function to get track by ID from Tidal
+            pass
+        except:
+            pass
     
     # Try each artist for better accuracy
     for artist in spotify_track.get('artists', []):
@@ -92,15 +107,22 @@ async def tidal_search_single(spotify_track: dict, tidal_session: tidalapi.Sessi
             for tidal_track in search_results.get('tracks', []):
                 if match(tidal_track, spotify_track):
                     print(f"✓ Found: '{spotify_track['name']}' → '{tidal_track.name}' by {tidal_track.artist.name}")
+                    # Cache the successful match
+                    if track_id:
+                        track_match_cache.insert((track_id, tidal_track.id))
                     return tidal_track
                     
         except Exception as e:
             print(f"Search error for '{spotify_track['name']}': {e}")
             continue
 
-    # If no match was found after trying all artists
-    print(f"✗ No match: {spotify_track['artists'][0]['name']} - {spotify_track['name']}")
-    failure_cache.cache_match_failure(spotify_track['id'])
+    # If no match was found after trying all artists, cache the failure
+    artist_names = ', '.join([artist.get('name', 'Unknown') for artist in spotify_track.get('artists', [])])
+    print(f"✗ No match: {artist_names} - {spotify_track['name']}")
+    
+    if track_id:
+        failure_cache.cache_match_failure(track_id)
+    
     return None
 
 def populate_track_match_cache(spotify_tracks_: Sequence[dict], tidal_tracks_: Sequence[tidalapi.Track]):
@@ -184,7 +206,7 @@ async def sync_playlist(tidal_session: tidalapi.Session, playlist_data: dict, co
     print(f"\n🎵 Starting sync for playlist: '{playlist_name}' ({len(spotify_tracks)} tracks)")
     
     if not spotify_tracks:
-        print(f"❌ Playlist '{playlist_name}' has no tracks. Skipping.")
+        print(f"Playlist '{playlist_name}' has no tracks. Skipping.")
         return
         
     print("📋 Loading existing Tidal playlists...")
@@ -209,7 +231,7 @@ async def sync_playlist(tidal_session: tidalapi.Session, playlist_data: dict, co
     old_tidal_track_ids = [t.id for t in old_tidal_tracks]
     
     if new_tidal_track_ids == old_tidal_track_ids:
-        print(f"✅ No changes needed for Tidal playlist '{playlist_name}'")
+        print(f"No changes needed for Tidal playlist '{playlist_name}'")
         return
 
     print(f"🔄 Updating Tidal playlist '{playlist_name}' with {len(new_tidal_track_ids)} tracks...")
@@ -219,5 +241,32 @@ async def sync_playlist(tidal_session: tidalapi.Session, playlist_data: dict, co
     
     if new_tidal_track_ids:
         add_multiple_tracks_to_playlist(tidal_playlist, new_tidal_track_ids)
+
+    failed_tracks_summary = get_playlist_failure_summary(spotify_tracks, playlist_name)
     
-    print(f"✅ Successfully synced playlist '{playlist_name}'!\n")
+    if failed_tracks_summary:
+        print(f"{len(failed_tracks_summary)} tracks could not be found on Tidal for playlist '{playlist_name}'")
+    else:
+        print(f"All tracks successfully found for playlist '{playlist_name}'")
+    
+    print(f"Successfully synced playlist '{playlist_name}'!\n")
+
+def get_playlist_failure_summary(spotify_tracks: List[dict], playlist_name: str) -> List[str]:
+    """Get a summary of failed tracks for a specific playlist."""
+    failed_tracks = []
+    
+    for track in spotify_tracks:
+        track_id = track.get('id', '')
+        if track_id and failure_cache.has_match_failure(track_id):
+            artist_names = ', '.join([artist.get('name', 'Unknown') for artist in track.get('artists', [])])
+            track_name = track.get('name', 'Unknown Track')
+            failed_tracks.append(f"{track_name} - {artist_names}")
+    
+    if failed_tracks:
+        print(f"Failure summary for '{playlist_name}': {len(failed_tracks)} tracks not found")
+        for i, failed_track in enumerate(failed_tracks[:5], 1):  # Show first 5
+            print(f"   {i}. {failed_track}")
+        if len(failed_tracks) > 5:
+            print(f"   ... and {len(failed_tracks) - 5} more")
+    
+    return failed_tracks

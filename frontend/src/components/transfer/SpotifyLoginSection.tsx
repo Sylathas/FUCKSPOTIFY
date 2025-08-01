@@ -260,7 +260,7 @@ export default function SpotifyLoginSection({
     const [authError, setAuthError] = useState<string | null>(null)
     const [showOverlay, setShowOverlay] = useState(false)
 
-    // FIXED: Check for existing authentication when component loads
+    // Check for existing authentication when component loads
     useEffect(() => {
         const initializeAuth = async () => {
             if (spotifyUser) {
@@ -323,7 +323,7 @@ export default function SpotifyLoginSection({
         initializeAuth()
     }, [onLogin, spotifyUser, isMobile])
 
-    // FIXED: Better credential checking with validation
+    // Credential checking with validation
     const handleLogin = async () => {
         console.log('=== LOGIN BUTTON CLICKED ===')
 
@@ -407,7 +407,7 @@ export default function SpotifyLoginSection({
         handleLogin()
     }
 
-    // Determine which image to show (SAME AS ORIGINAL)
+    // Determine which image to show
     const buttonImage = spotifyUser ? "/Buttons/Logout.png" : "/Buttons/Login.png"
     const buttonAlt = spotifyUser ? "Logout from Spotify" : "Login to Spotify"
     const buttonTitle = spotifyUser
@@ -416,7 +416,6 @@ export default function SpotifyLoginSection({
 
     return (
         <>
-            {/* EXACT SAME UI AS ORIGINAL */}
             <div
                 className={`
                     relative bg-cover bg-center bg-no-repeat
@@ -455,7 +454,7 @@ export default function SpotifyLoginSection({
                     </div>
                 )}
 
-                {/* Main login/logout button - EXACTLY LIKE ORIGINAL */}
+                {/* Main login/logout button */}
                 <img
                     src={buttonImage}
                     alt={buttonAlt}

@@ -3,6 +3,19 @@ export interface ComponentProps {
     isMobile: boolean
 }
 
+declare global {
+    interface Window {
+        kofiWidgetOverlay: {
+            draw: (username: string, options: {
+                'type': string;
+                'floating-chat.donateButton.text': string;
+                'floating-chat.donateButton.background-color': string;
+                'floating-chat.donateButton.text-color': string;
+            }) => void;
+        };
+    }
+}
+
 // Enhanced Spotify Data Types - matching actual API responses
 export interface SpotifyTrack {
     id: string

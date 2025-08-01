@@ -32,12 +32,12 @@ export default function HomePage() {
       />
 
       {/* Section 1: Landing Page with positioned images */}
-      <section id="landing" className="relative z-1" style={{ minHeight: `${isMobile ? '800px' : '80vh'}` }}>
+      <section id="landing" className="relative z-1" style={{ minHeight: `${isMobile ? '800px' : '70vh'}` }}>
         <LandingSection />
       </section>
 
       {/* Section 2: Transfer UI */}
-      <section id="transfer" className="relative z-2" style={{ minHeight: `${isMobile ? '2000px' : '50vh'}` }}>
+      <section id="transfer" className="relative z-2" style={{ minHeight: `${isMobile ? '2000px' : '60vh'}` }}>
         <TransferUI />
       </section>
 

@@ -38,57 +38,85 @@ export default function TransferUI() {
     }, [tidalAuthState, selectedPlatform])
 
     return (
-        <div className="w-full h-[50vh] flex items-center justify-center">
-            <div className="max-w-[95%] w-full h-full">
-
-                <div className={`
-          ${isMobile
-                        ? 'flex flex-col'
-                        : 'grid grid-cols-6 h-full'
-                    }
-        `}>
-
-                    <div className={isMobile ? 'w-full' : 'col-span-1'}>
-                        <SpotifyLoginSection
-                            isMobile={isMobile}
-                            onLogin={setSpotifyUser}
-                            spotifyUser={spotifyUser}
-                        />
+        <>
+            <div className="w-full flex flex-col items-center justify-center">
+                {/* Credits Section */}
+                <div className="w-full max-w-[95%] mt-1 mb-1 flex flex-row items-end justify-left">
+                    {/* My Credits */}
+                    <div className="text-sm text-white-600 dark:text-white-400 mr-5">
+                        Website created by{' '}
+                        <a
+                            href="https://www.instagram.com/sylathas"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-white-600 bg-blue-700 hover:bg-blue-500 transition-colors duration-200 underline"
+                        >
+                            Sylathas
+                        </a>
                     </div>
-
-                    <div className={isMobile ? 'w-full' : 'col-span-3'}>
-                        <MusicSelectorSection
-                            isMobile={isMobile}
-                            spotifyUser={spotifyUser}
-                            selectedSongs={selectedSongs}
-                            selectedAlbums={selectedAlbums}
-                            selectedPlaylists={selectedPlaylists}
-                            onSelectSongs={setSelectedSongs}
-                            onSelectAlbums={setSelectedAlbums}
-                            onSelectPlaylists={setSelectedPlaylists}
-                        />
+                    <div className="text-sm text-white-600 dark:text-white-400">
+                        <a
+                            href="https://ko-fi.com/sylathas"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-white-600 bg-blue-700 hover:bg-blue-500 transition-colors duration-200 underline"
+                        >
+                            Support development
+                        </a>
                     </div>
+                </div>
+                {/* Main Transfer UI */}
+                <div className="w-full h-[50vh] flex items-center justify-center">
+                    <div className="max-w-[95%] w-full h-full">
+                        <div className={`
+                        ${isMobile
+                                ? 'flex flex-col'
+                                : 'grid grid-cols-6 h-full'
+                            }
+                    `}>
+                            <div className={isMobile ? 'w-full' : 'col-span-1'}>
+                                <SpotifyLoginSection
+                                    isMobile={isMobile}
+                                    onLogin={setSpotifyUser}
+                                    spotifyUser={spotifyUser}
+                                />
+                            </div>
 
-                    <div className={isMobile ? 'w-full' : 'col-span-1'}>
-                        <PlatformSelectorSection
-                            isMobile={isMobile}
-                            selectedPlatform={selectedPlatform}
-                            onSelectPlatform={setSelectedPlatform}
-                        />
-                    </div>
+                            <div className={isMobile ? 'w-full' : 'col-span-3'}>
+                                <MusicSelectorSection
+                                    isMobile={isMobile}
+                                    spotifyUser={spotifyUser}
+                                    selectedSongs={selectedSongs}
+                                    selectedAlbums={selectedAlbums}
+                                    selectedPlaylists={selectedPlaylists}
+                                    onSelectSongs={setSelectedSongs}
+                                    onSelectAlbums={setSelectedAlbums}
+                                    onSelectPlaylists={setSelectedPlaylists}
+                                />
+                            </div>
 
-                    <div className={isMobile ? 'w-full' : 'col-span-1'}>
-                        <TransferButtonSection
-                            isMobile={isMobile}
-                            spotifyUser={spotifyUser}
-                            selectedSongs={selectedSongs}
-                            selectedAlbums={selectedAlbums}
-                            selectedPlaylists={selectedPlaylists}
-                            selectedPlatform={selectedPlatform}
-                        />
+                            <div className={isMobile ? 'w-full' : 'col-span-1'}>
+                                <PlatformSelectorSection
+                                    isMobile={isMobile}
+                                    selectedPlatform={selectedPlatform}
+                                    onSelectPlatform={setSelectedPlatform}
+                                />
+                            </div>
+
+                            <div className={isMobile ? 'w-full' : 'col-span-1'}>
+                                <TransferButtonSection
+                                    isMobile={isMobile}
+                                    spotifyUser={spotifyUser}
+                                    selectedSongs={selectedSongs}
+                                    selectedAlbums={selectedAlbums}
+                                    selectedPlaylists={selectedPlaylists}
+                                    selectedPlatform={selectedPlatform}
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
+        </>
     )
 }

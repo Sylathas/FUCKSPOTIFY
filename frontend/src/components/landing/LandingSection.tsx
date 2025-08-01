@@ -84,6 +84,7 @@ export default function LandingSection() {
                         wiggleIntensity={animationSettings.text.intensity}
                         wiggleSpeed={animationSettings.text.speed}
                     />
+
                 </>
             )}
 
