@@ -159,13 +159,18 @@ export default function TransferButtonSection({
 
     const fetchFailureReport = async (transferId: string) => {
         try {
+            console.log('Fetching failure report for transfer ID:', transferId) // Debug log
             const response = await fetch(`${BACKEND_API_URL}/api/transfer/failures/${transferId}`)
             if (response.ok) {
                 const report: FailureReport = await response.json()
+                console.log('Fetched failure report:', report) // Debug log
                 if (report.total_failures > 0) {
                     setFailureReport(report)
                     setShowDownloadOption(true)
+                    console.log('Set download option to true for playlist transfer') // Debug log
                 }
+            } else {
+                console.log('Failed to fetch failure report, status:', response.status) // Debug log
             }
         } catch (error) {
             console.error('Failed to fetch failure report:', error)
@@ -213,9 +218,11 @@ export default function TransferButtonSection({
         document.body.removeChild(link)
         URL.revokeObjectURL(url)
 
-        // Hide download option after use
+        // Clear download option and failure report after successful download
         setShowDownloadOption(false)
         setFailureReport(null)
+
+        console.log('Downloaded failure report and cleared state') // Debug log
     }
 
     // FIXED: Comprehensive data fetching that gets ALL selected items
@@ -414,7 +421,7 @@ export default function TransferButtonSection({
         // If no playlists (so no background transfer), check for failures from songs/albums
         if (playlistsToProcess.length === 0) {
             // Combine all transfer IDs to check for failures
-            const transferIds = [currentTransferId, songsTransferId, albumsTransferId].filter(Boolean)
+            const transferIds = [songsTransferId, albumsTransferId].filter(Boolean)
 
             // Check for failures from any of the operations
             let hasFailures = false
@@ -425,6 +432,7 @@ export default function TransferButtonSection({
                     const failureResponse = await fetch(`${BACKEND_API_URL}/api/transfer/failures/${transferId}`)
                     if (failureResponse.ok) {
                         const report: FailureReport = await failureResponse.json()
+                        console.log('Fetched failure report:', report) // Debug log
                         if (report.total_failures > 0) {
                             if (!combinedReport) {
                                 combinedReport = {
@@ -456,9 +464,13 @@ export default function TransferButtonSection({
                 }
             }
 
+            console.log('Combined report:', combinedReport) // Debug log
+            console.log('Has failures:', hasFailures) // Debug log
+
             if (hasFailures && combinedReport) {
                 setFailureReport(combinedReport)
                 setShowDownloadOption(true)
+                console.log('Setting download option to true') // Debug log
             }
 
             alert("Transfer completed!\n\n" + results.join("\n"))
@@ -467,6 +479,7 @@ export default function TransferButtonSection({
                 setIsTransferring(false)
                 setTransferStatus('')
                 setTransferProgress(0)
+                // Don't clear download option and failure report here - let user decide when to download
             }, 2000)
         }
 
