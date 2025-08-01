@@ -88,6 +88,8 @@ export default function TransferButtonSection({
     const [transferStatus, setTransferStatus] = useState('')
     const [transferProgress, setTransferProgress] = useState(0)
     const [currentTransferId, setCurrentTransferId] = useState<string | null>(null)
+    const [songsTransferId, setSongsTransferId] = useState<string | null>(null)
+    const [albumsTransferId, setAlbumsTransferId] = useState<string | null>(null)
     const [detailedProgress, setDetailedProgress] = useState<ProgressData | null>(null)
     const [failureReport, setFailureReport] = useState<FailureReport | null>(null)
     const [showDownloadOption, setShowDownloadOption] = useState(false)
@@ -128,8 +130,8 @@ export default function TransferButtonSection({
                             setIsTransferring(false)
                             setCurrentTransferId(null)
 
-                            // Fetch failure report if available
-                            await fetchFailureReport(currentTransferId)
+                            // Fetch and combine failure reports from ALL operations (playlists + songs + albums)
+                            await fetchAndCombineAllFailureReports(currentTransferId, songsTransferId, albumsTransferId)
 
                             setTimeout(() => {
                                 setTransferStatus('')
@@ -157,23 +159,65 @@ export default function TransferButtonSection({
         }
     }, [currentTransferId, isTransferring, selectedPlatform, BACKEND_API_URL])
 
-    const fetchFailureReport = async (transferId: string) => {
+    const fetchAndCombineAllFailureReports = async (playlistTransferId: string | null, songsTransferId: string | null, albumsTransferId: string | null) => {
         try {
-            console.log('Fetching failure report for transfer ID:', transferId) // Debug log
-            const response = await fetch(`${BACKEND_API_URL}/api/transfer/failures/${transferId}`)
-            if (response.ok) {
-                const report: FailureReport = await response.json()
-                console.log('Fetched failure report:', report) // Debug log
-                if (report.total_failures > 0) {
-                    setFailureReport(report)
-                    setShowDownloadOption(true)
-                    console.log('Set download option to true for playlist transfer') // Debug log
+            console.log('Fetching all failure reports:', { playlistTransferId, songsTransferId, albumsTransferId })
+
+            const transferIds = [playlistTransferId, songsTransferId, albumsTransferId].filter(Boolean)
+            let combinedReport: FailureReport | null = null
+            let hasFailures = false
+
+            for (const transferId of transferIds) {
+                try {
+                    console.log('Fetching failure report for transfer ID:', transferId)
+                    const response = await fetch(`${BACKEND_API_URL}/api/transfer/failures/${transferId}`)
+                    if (response.ok) {
+                        const report: FailureReport = await response.json()
+                        console.log('Fetched failure report:', report)
+
+                        if (report.total_failures > 0) {
+                            if (!combinedReport) {
+                                combinedReport = {
+                                    platform: report.platform,
+                                    failed_songs: Array.isArray(report.failed_songs) ? [...report.failed_songs] : [],
+                                    failed_albums: Array.isArray(report.failed_albums) ? [...report.failed_albums] : [],
+                                    failed_playlists: report.failed_playlists && typeof report.failed_playlists === 'object' ? { ...report.failed_playlists } : {},
+                                    total_failures: report.total_failures
+                                }
+                            } else {
+                                // Merge with existing report
+                                const newFailedSongs = Array.isArray(report.failed_songs) ? report.failed_songs : []
+                                const newFailedAlbums = Array.isArray(report.failed_albums) ? report.failed_albums : []
+                                const newFailedPlaylists = report.failed_playlists && typeof report.failed_playlists === 'object' ? report.failed_playlists : {}
+
+                                combinedReport = {
+                                    platform: combinedReport.platform,
+                                    failed_songs: [...combinedReport.failed_songs, ...newFailedSongs],
+                                    failed_albums: [...combinedReport.failed_albums, ...newFailedAlbums],
+                                    failed_playlists: Object.assign({}, combinedReport.failed_playlists, newFailedPlaylists),
+                                    total_failures: combinedReport.total_failures + report.total_failures
+                                }
+                            }
+                            hasFailures = true
+                        }
+                    } else {
+                        console.log('Failed to fetch failure report, status:', response.status)
+                    }
+                } catch (error) {
+                    console.error(`Failed to fetch failure report for ${transferId}:`, error)
                 }
-            } else {
-                console.log('Failed to fetch failure report, status:', response.status) // Debug log
+            }
+
+            console.log('Final combined report:', combinedReport)
+            console.log('Has failures:', hasFailures)
+
+            if (hasFailures && combinedReport) {
+                setFailureReport(combinedReport)
+                setShowDownloadOption(true)
+                console.log('Set download option to true for combined transfer')
             }
         } catch (error) {
-            console.error('Failed to fetch failure report:', error)
+            console.error('Failed to fetch and combine failure reports:', error)
         }
     }
 
@@ -532,6 +576,10 @@ export default function TransferButtonSection({
         setTransferProgress(0)
         setShowDownloadOption(false)
         setFailureReport(null)
+        // Clear any previous transfer IDs
+        setCurrentTransferId(null)
+        setSongsTransferId(null)
+        setAlbumsTransferId(null)
 
         try {
             const { tracksToProcess, albumsToProcess, playlistsToProcess } = await fetchSelectedData()
