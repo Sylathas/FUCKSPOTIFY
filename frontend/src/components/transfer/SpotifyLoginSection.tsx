@@ -469,8 +469,8 @@ export default function SpotifyLoginSection({
 
                 {/* Status text for logged in user */}
                 {spotifyUser && (
-                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 
-                                 text-xs text-green-400 bg-black bg-opacity-50 px-2 py-1 rounded">
+                    <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 
+                                 text-xs text-green-400 bg-black/50 px-2 py-1 rounded">
                         {spotifyUser.name}
                     </div>
                 )}

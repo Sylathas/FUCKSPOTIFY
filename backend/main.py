@@ -289,7 +289,7 @@ async def verify_tidal_login(request: LoginVerifyRequest):
 # --- Transfer Endpoints ---
 @app.post("/api/like/songs")
 async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = Header(...)):
-    """Like songs on Tidal with enhanced failure tracking and statistics."""
+    """Like songs on Tidal with proper failure tracking."""
     token = authorization.split(" ")[1]
     tidal_session = get_tidal_session(token)
     liked_count = 0
@@ -297,11 +297,21 @@ async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = He
     
     print(f"Starting to like {len(request.tracks)} songs on Tidal")
     
-    # Record initial statistics
-    total_attempted = len(request.tracks)
+    # Generate a transfer ID for tracking failures
+    transfer_id = str(uuid.uuid4())
+    
+    # Initialize failure report for this operation
+    failure_reports[transfer_id] = {
+        "platform": "Tidal",
+        "failed_songs": [],
+        "failed_albums": [],
+        "failed_playlists": {},
+        "total_failures": 0
+    }
     
     for i, track_data in enumerate(request.tracks):
         try:
+            # Convert Pydantic model to dict for your existing function
             track_dict = track_data.dict()
             tidal_track = await tidal_search_single(track_dict, tidal_session)
             
@@ -313,24 +323,17 @@ async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = He
                 artist_names = ', '.join([artist.name for artist in track_data.artists])
                 failed_msg = f"{track_data.name} - {artist_names}"
                 failed_tracks.append(failed_msg)
+                failure_reports[transfer_id]["failed_songs"].append(failed_msg)
                 print(f"✗ Not found: {failed_msg}")
         except Exception as e:
             artist_names = ', '.join([artist.name for artist in track_data.artists])
             error_msg = f"{track_data.name} - {artist_names} (Error: {str(e)})"
             failed_tracks.append(error_msg)
-            
-            # Cache the failure with error message
-            if track_data.id:
-                failure_cache.cache_match_failure(track_data.id, str(e))
-            
+            failure_reports[transfer_id]["failed_songs"].append(error_msg)
             print(f"✗ Failed to like: {error_msg}")
     
-    # Record transfer statistics
-    failure_cache.record_transfer_stats(
-        platform="Tidal",
-        tracks_attempted=total_attempted,
-        tracks_successful=liked_count
-    )
+    # Update total failures count
+    failure_reports[transfer_id]["total_failures"] = len(failure_reports[transfer_id]["failed_songs"])
     
     result_msg = f"Successfully liked {liked_count}/{len(request.tracks)} songs."
     print(f"✓ Song liking completed: {result_msg}")
@@ -341,18 +344,30 @@ async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = He
         "failed": failed_tracks,
         "success_count": liked_count,
         "total_count": len(request.tracks),
-        "success_rate": (liked_count / len(request.tracks)) * 100 if request.tracks else 0
+        "transfer_id": transfer_id  # Return transfer_id so frontend can get failure report
     }
 
 @app.post("/api/add/albums")
 async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = Header(...)):
-    """Add albums to Tidal favorites with enhanced failure tracking."""
+    """Add albums to Tidal favorites with proper failure tracking."""
     token = authorization.split(" ")[1]
     tidal_session = get_tidal_session(token)
     added_count = 0
     failed_albums = []
     
     print(f"Starting to add {len(request.albums)} albums to Tidal")
+    
+    # Generate a transfer ID for tracking failures
+    transfer_id = str(uuid.uuid4())
+    
+    # Initialize failure report for this operation
+    failure_reports[transfer_id] = {
+        "platform": "Tidal",
+        "failed_songs": [],
+        "failed_albums": [],
+        "failed_playlists": {},
+        "total_failures": 0
+    }
     
     for i, album_data in enumerate(request.albums):
         try:
@@ -370,12 +385,17 @@ async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = He
                 artist_names = ', '.join([artist.name for artist in album_data.artists])
                 failed_msg = f"{album_data.name} - {artist_names}"
                 failed_albums.append(failed_msg)
+                failure_reports[transfer_id]["failed_albums"].append(failed_msg)
                 print(f"✗ Not found: {failed_msg}")
         except Exception as e:
             artist_names = ', '.join([artist.name for artist in album_data.artists])
             error_msg = f"{album_data.name} - {artist_names} (Error: {str(e)})"
             failed_albums.append(error_msg)
+            failure_reports[transfer_id]["failed_albums"].append(error_msg)
             print(f"✗ Failed to add: {error_msg}")
+    
+    # Update total failures count
+    failure_reports[transfer_id]["total_failures"] = len(failure_reports[transfer_id]["failed_albums"])
     
     result_msg = f"Successfully added {added_count}/{len(request.albums)} albums."
     print(f"✓ Album adding completed: {result_msg}")
@@ -385,7 +405,8 @@ async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = He
         "message": result_msg,
         "failed": failed_albums,
         "success_count": added_count,
-        "total_count": len(request.albums)
+        "total_count": len(request.albums),
+        "transfer_id": transfer_id  # Return transfer_id so frontend can get failure report
     }
 
 # --- Playlist Transfer with Progress Tracking ---

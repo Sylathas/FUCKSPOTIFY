@@ -41,7 +41,7 @@ export default function TransferUI() {
         <>
             <div className="w-full flex flex-col items-center justify-center">
                 {/* Credits Section */}
-                <div className="w-full max-w-[95%] mt-1 mb-1 flex flex-row items-end justify-left">
+                <div className="w-full max-w-[95%] mt-1 mb-1 flex flex-row items-end justify-left bg-black/50 rounded px-2 py-1">
                     {/* My Credits */}
                     <div className="text-sm text-white-600 dark:text-white-400 mr-5">
                         Website created by{' '}
@@ -49,20 +49,32 @@ export default function TransferUI() {
                             href="https://www.instagram.com/sylathas"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-white-600 bg-blue-700 hover:bg-blue-500 transition-colors duration-200 underline"
+                            className="text-white-600 bg-strongblue hover:text-red-400 transition-colors duration-200 underlin cursor-pointer"
                         >
                             Sylathas
                         </a>
                     </div>
-                    <div className="text-sm text-white-600 dark:text-white-400">
+                    <div className="text-sm text-white-600 dark:text-white-400 mr-5">
                         <a
                             href="https://ko-fi.com/sylathas"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-white-600 bg-blue-700 hover:bg-blue-500 transition-colors duration-200 underline"
+                            className="text-white-600 bg-strongblue hover:text-red-400 transition-colors duration-200 underlin cursor-pointer"
                         >
                             Support development
                         </a>
+                    </div>
+                    <div className="text-sm text-white-600 dark:text-white-400">
+                        Tidal transfer API:
+                        <a
+                            href="https://pypi.org/project/tidalapi/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-white-600 bg-strongblue hover:text-red-400 transition-colors duration-200 underlin cursor-pointer"
+                        >
+                            tidalapi
+                        </a>
+
                     </div>
                 </div>
                 {/* Main Transfer UI */}

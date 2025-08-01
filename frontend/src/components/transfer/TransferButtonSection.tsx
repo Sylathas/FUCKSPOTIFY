@@ -376,6 +376,7 @@ export default function TransferButtonSection({
         }
 
         // Handle liked songs
+        let songsTransferId = null
         if (tracksToProcess.length > 0) {
             setTransferStatus(`Processing ${tracksToProcess.length} liked songs...`)
             const res = await fetch(`${BACKEND_API_URL}/api/like/songs`, {
@@ -385,11 +386,15 @@ export default function TransferButtonSection({
             })
             const songResult = await res.json()
             results.push(`Liked Songs: ${songResult.message}`)
+            if (songResult.transfer_id) {
+                songsTransferId = songResult.transfer_id
+            }
             completedOperations++
             setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
         }
 
         // Handle albums
+        let albumsTransferId = null
         if (albumsToProcess.length > 0) {
             setTransferStatus(`Processing ${albumsToProcess.length} albums...`)
             const res = await fetch(`${BACKEND_API_URL}/api/add/albums`, {
@@ -399,12 +404,63 @@ export default function TransferButtonSection({
             })
             const albumResult = await res.json()
             results.push(`Albums: ${albumResult.message}`)
+            if (albumResult.transfer_id) {
+                albumsTransferId = albumResult.transfer_id
+            }
             completedOperations++
             setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
         }
 
-        // If no playlists (so no background transfer), show completion
+        // If no playlists (so no background transfer), check for failures from songs/albums
         if (playlistsToProcess.length === 0) {
+            // Combine all transfer IDs to check for failures
+            const transferIds = [currentTransferId, songsTransferId, albumsTransferId].filter(Boolean)
+
+            // Check for failures from any of the operations
+            let hasFailures = false
+            let combinedReport: FailureReport | null = null
+
+            for (const transferId of transferIds) {
+                try {
+                    const failureResponse = await fetch(`${BACKEND_API_URL}/api/transfer/failures/${transferId}`)
+                    if (failureResponse.ok) {
+                        const report: FailureReport = await failureResponse.json()
+                        if (report.total_failures > 0) {
+                            if (!combinedReport) {
+                                combinedReport = {
+                                    platform: report.platform,
+                                    failed_songs: Array.isArray(report.failed_songs) ? [...report.failed_songs] : [],
+                                    failed_albums: Array.isArray(report.failed_albums) ? [...report.failed_albums] : [],
+                                    failed_playlists: report.failed_playlists && typeof report.failed_playlists === 'object' ? { ...report.failed_playlists } : {},
+                                    total_failures: report.total_failures
+                                }
+                            } else {
+                                // Merge with existing report
+                                const newFailedSongs = Array.isArray(report.failed_songs) ? report.failed_songs : []
+                                const newFailedAlbums = Array.isArray(report.failed_albums) ? report.failed_albums : []
+                                const newFailedPlaylists = report.failed_playlists && typeof report.failed_playlists === 'object' ? report.failed_playlists : {}
+
+                                combinedReport = {
+                                    platform: combinedReport.platform,
+                                    failed_songs: [...combinedReport.failed_songs, ...newFailedSongs],
+                                    failed_albums: [...combinedReport.failed_albums, ...newFailedAlbums],
+                                    failed_playlists: Object.assign({}, combinedReport.failed_playlists, newFailedPlaylists),
+                                    total_failures: combinedReport.total_failures + report.total_failures
+                                }
+                            }
+                            hasFailures = true
+                        }
+                    }
+                } catch (error) {
+                    console.error(`Failed to fetch failure report for ${transferId}:`, error)
+                }
+            }
+
+            if (hasFailures && combinedReport) {
+                setFailureReport(combinedReport)
+                setShowDownloadOption(true)
+            }
+
             alert("Transfer completed!\n\n" + results.join("\n"))
             setTransferStatus('Transfer completed!')
             setTimeout(() => {

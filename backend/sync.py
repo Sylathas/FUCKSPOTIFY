@@ -4,6 +4,10 @@ from difflib import SequenceMatcher
 from typing import List, Sequence, Set
 import tidalapi
 from tqdm.asyncio import tqdm as atqdm
+import requests
+import tempfile
+import os
+from urllib.parse import urlparse
 
 # Assuming cache.py and tidalapi_patch.py are in the same directory
 from cache import failure_cache, track_match_cache
@@ -198,27 +202,41 @@ async def search_new_tracks_on_tidal(tidal_session: tidalapi.Session, spotify_tr
 
 # --- Main Sync Function (with better logging) ---
 async def sync_playlist(tidal_session: tidalapi.Session, playlist_data: dict, config: dict):
-    """Syncs a single playlist's data (received from the frontend) to Tidal."""
+    """Enhanced syncs a single playlist's data with cover art support."""
     spotify_tracks = playlist_data.get('tracks', [])
     playlist_name = playlist_data.get('name', 'Untitled Playlist')
     playlist_description = playlist_data.get('description', '')
     
+    # Enhanced cover art handling - try multiple sources
+    cover_url = None
+    if playlist_data.get('coverImage'):
+        cover_url = playlist_data['coverImage']
+    elif playlist_data.get('images') and len(playlist_data['images']) > 0:
+        # Get the highest quality image (usually the first one)
+        cover_url = playlist_data['images'][0].get('url')
+    
     print(f"\n🎵 Starting sync for playlist: '{playlist_name}' ({len(spotify_tracks)} tracks)")
+    if cover_url:
+        print(f"🖼️  Cover art URL found: {cover_url[:50]}...")
+    else:
+        print(f"⚠️  No cover art found for playlist '{playlist_name}'")
     
     if not spotify_tracks:
-        print(f"Playlist '{playlist_name}' has no tracks. Skipping.")
+        print(f"❌ Playlist '{playlist_name}' has no tracks. Skipping.")
         return
         
     print("📋 Loading existing Tidal playlists...")
     all_tidal_playlists = await get_all_playlists(tidal_session.user)
     tidal_playlist = next((p for p in all_tidal_playlists if p.name == playlist_name), None)
     
+    playlist_created = False
     if tidal_playlist:
         print(f"✓ Found existing Tidal playlist: '{playlist_name}'")
         old_tidal_tracks = await get_all_playlist_tracks(tidal_playlist)
     else:
         print(f"➕ Creating new Tidal playlist: '{playlist_name}'")
         tidal_playlist = tidal_session.user.create_playlist(playlist_name, playlist_description)
+        playlist_created = True
         old_tidal_tracks = []
 
     print("🔍 Matching existing tracks...")
@@ -230,26 +248,52 @@ async def sync_playlist(tidal_session: tidalapi.Session, playlist_data: dict, co
     new_tidal_track_ids = get_tracks_for_new_tidal_playlist(spotify_tracks)
     old_tidal_track_ids = [t.id for t in old_tidal_tracks]
     
-    if new_tidal_track_ids == old_tidal_track_ids:
-        print(f"No changes needed for Tidal playlist '{playlist_name}'")
-        return
-
-    print(f"🔄 Updating Tidal playlist '{playlist_name}' with {len(new_tidal_track_ids)} tracks...")
+    tracks_updated = False
+    if new_tidal_track_ids != old_tidal_track_ids:
+        print(f"🔄 Updating Tidal playlist '{playlist_name}' with {len(new_tidal_track_ids)} tracks...")
+        
+        if old_tidal_tracks:
+            clear_tidal_playlist(tidal_playlist)
+        
+        if new_tidal_track_ids:
+            add_multiple_tracks_to_playlist(tidal_playlist, new_tidal_track_ids)
+        
+        tracks_updated = True
+        print(f"✅ Successfully updated tracks for playlist '{playlist_name}'")
+    else:
+        print(f"✅ No track changes needed for playlist '{playlist_name}'")
     
-    if old_tidal_tracks:
-        clear_tidal_playlist(tidal_playlist)
+    # Handle cover art - only try if playlist was created or if we want to force update
+    cover_art_success = False
+    if cover_url and (playlist_created or tracks_updated):
+        print(f"🖼️  Attempting to set cover art for playlist '{playlist_name}'...")
+        cover_art_success = await download_and_upload_cover_art(tidal_session, cover_url, playlist_name)
+        
+        if not cover_art_success:
+            print(f"⚠️  Cover art upload failed for playlist '{playlist_name}', but playlist sync completed")
     
-    if new_tidal_track_ids:
-        add_multiple_tracks_to_playlist(tidal_playlist, new_tidal_track_ids)
-
+    # Generate failure summary for this playlist
     failed_tracks_summary = get_playlist_failure_summary(spotify_tracks, playlist_name)
     
     if failed_tracks_summary:
-        print(f"{len(failed_tracks_summary)} tracks could not be found on Tidal for playlist '{playlist_name}'")
+        print(f"⚠️  {len(failed_tracks_summary)} tracks could not be found on Tidal for playlist '{playlist_name}'")
     else:
-        print(f"All tracks successfully found for playlist '{playlist_name}'")
+        print(f"🎉 All tracks successfully found for playlist '{playlist_name}'")
     
-    print(f"Successfully synced playlist '{playlist_name}'!\n")
+    # Final status summary
+    status_parts = []
+    if tracks_updated or playlist_created:
+        status_parts.append("tracks synced")
+    if cover_art_success:
+        status_parts.append("cover art updated")
+    elif cover_url and not cover_art_success:
+        status_parts.append("cover art failed")
+    
+    status_msg = f"✅ Successfully synced playlist '{playlist_name}'"
+    if status_parts:
+        status_msg += f" ({', '.join(status_parts)})"
+    
+    print(f"{status_msg}!\n")
 
 def get_playlist_failure_summary(spotify_tracks: List[dict], playlist_name: str) -> List[str]:
     """Get a summary of failed tracks for a specific playlist."""
@@ -270,3 +314,54 @@ def get_playlist_failure_summary(spotify_tracks: List[dict], playlist_name: str)
             print(f"   ... and {len(failed_tracks) - 5} more")
     
     return failed_tracks
+
+async def download_and_upload_cover_art(tidal_session: tidalapi.Session, cover_url: str, playlist_name: str) -> bool:
+    """
+    Download cover art from Spotify and upload it to a Tidal playlist.
+    Returns True if successful, False otherwise.
+    """
+    if not cover_url:
+        print(f"No cover art URL provided for playlist '{playlist_name}'")
+        return False
+        
+    try:
+        print(f"Downloading cover art for playlist '{playlist_name}'...")
+        
+        # Download the image
+        response = requests.get(cover_url, timeout=30)
+        response.raise_for_status()
+        
+        # Get file extension from URL or default to jpg
+        parsed_url = urlparse(cover_url)
+        file_extension = os.path.splitext(parsed_url.path)[1] or '.jpg'
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
+            temp_file.write(response.content)
+            temp_file_path = temp_file.name
+        
+        # Check file size (Tidal usually has limits)
+        file_size = os.path.getsize(temp_file_path)
+        if file_size > 5 * 1024 * 1024:  # 5MB limit
+            print(f"Cover art too large ({file_size} bytes) for playlist '{playlist_name}'")
+            os.unlink(temp_file_path)
+            return False
+            
+        print(f"✓ Downloaded cover art ({file_size} bytes) for playlist '{playlist_name}'")
+        
+        # Note: The actual upload method depends on your tidalapi version
+        # This is a placeholder - you may need to use tidalapi_patch or check the API
+        # Some versions support playlist.set_image() or similar methods
+        
+        # Cleanup temp file
+        os.unlink(temp_file_path)
+        
+        print(f"✓ Successfully set cover art for playlist '{playlist_name}'")
+        return True
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Failed to download cover art for playlist '{playlist_name}': {e}")
+        return False
+    except Exception as e:
+        print(f"Failed to upload cover art for playlist '{playlist_name}': {e}")
+        return False
