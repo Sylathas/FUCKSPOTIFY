@@ -78,8 +78,8 @@ export default function TransferUI() {
                     </div>
                 </div>
                 {/* Main Transfer UI */}
-                <div className="w-full h-[50vh] flex items-center justify-center">
-                    <div className="max-w-[95%] w-full h-full">
+                <div className="w-full h-[50vh] flex items-center justify-center ">
+                    <div className="max-w-[95%] w-full h-full shadow-[0px_0px_20px_0px_rgba(255,_255,_255,_0.5)]">
                         <div className={`
                         ${isMobile
                                 ? 'flex flex-col'

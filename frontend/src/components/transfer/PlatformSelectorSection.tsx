@@ -20,7 +20,6 @@ export default function PlatformSelectorSection({
         { name: 'APPLE MUSIC', image: '/Buttons/Apple.png', implemented: false },
         { name: 'SOUNDCLOUD', image: '/Buttons/Soundcloud.png', implemented: false },
         { name: 'TIDAL', image: '/Buttons/Tidal.png', implemented: true },
-        { name: 'YOUTUBE MUSIC', image: '/Buttons/YT.png', implemented: false },
         { name: 'BANDCAMP', image: '/Buttons/Bandcamp.png', implemented: true }
     ]
 
