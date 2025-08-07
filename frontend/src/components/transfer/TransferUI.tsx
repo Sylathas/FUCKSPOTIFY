@@ -41,7 +41,10 @@ export default function TransferUI() {
         <>
             <div className="w-full flex flex-col items-center justify-center">
                 {/* Credits Section */}
-                <div className="w-full max-w-[95%] mt-1 mb-1 flex flex-row items-end justify-left bg-black/50 rounded px-2 py-1">
+                <div className="w-auto max-w-[95%] mt-1 mb-2 flex flex-row items-end justify-left px-2 py-1 bg-cover bg-center bg-no-repeat" style={{
+                    backgroundImage: "url('/Buttons/UI_Background_Red.jpg')",
+                    backgroundSize: '100% 100%'
+                }}>
                     {/* My Credits */}
                     <div className="text-sm text-white-600 dark:text-white-400 mr-5">
                         Website created by{' '}

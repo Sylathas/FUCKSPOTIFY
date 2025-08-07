@@ -30,18 +30,18 @@ export default function PoliticalDisclaimer({ isMobile }: DisclaimerProps) {
 
     return (
         <div className={`${isMobile ? 'p-4' : 'p-8'}`}>
-            <div className="max-w-8xl mx-auto text-center">
+            <div className="max-w-8xl mx-auto text-center bg-cover bg-center bg-no-repeat">
                 <div style={{
                     fontSize: '11px',
-                    background: 'linear-gradient(to bottom, #ff4444 0%, #cc0000 100%)',
+                    backgroundImage: "url('/Buttons/UI_Background_Red.jpg')",
+                    backgroundSize: '100% 100%',
                     padding: '3px 2px 3px 3px',
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
                     boxShadow: 'inset 1px 1px 0px rgba(255,255,255,0.3), inset -1px -1px 0px rgba(0,0,0,0.3)',
                     border: '1px solid #990000',
-                    borderRadius: '10px'
-                }} className="mb-10">
+                }} className="mb-5">
                     <span style={{
                         fontWeight: 'bold',
                         color: 'white',
@@ -80,19 +80,20 @@ export default function PoliticalDisclaimer({ isMobile }: DisclaimerProps) {
                         </div>
                     ))}
                 </div>
-                <div className="mt-10" style={{
-                    background: 'linear-gradient(to bottom, #6644ffff 0%, #1f00ccff 100%)',
+                <div className="mt-5 w-1/3 bg-cover bg-center bg-no-repeat ml-[50%]" style={{
+                    backgroundImage: "url('/Buttons/UI_Background_Red.jpg')",
+                    backgroundSize: '100% 100%',
                     padding: '3px 2px 3px 3px',
                     display: 'flex',
                     justifyContent: 'center',
                     alignItems: 'center',
                     boxShadow: 'inset 1px 1px 0px rgba(255,255,255,0.3), inset -1px -1px 0px rgba(0,0,0,0.3)',
-                    border: '1px solid #030099ff',
-                    borderRadius: '10px'
+                    border: '1px solid #430101ff',
+                    imageRendering: 'pixelated',
+                    transform: 'translateX(-50%)'
                 }}>
-                    <p className="text-white-400 text-sm">
+                    <p className="text-gray text-sm">
                         Your data stays on your device.
-                        No tracking, no data selling, no profit from your transfers.
                     </p>
                 </div>
             </div>

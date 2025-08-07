@@ -38,7 +38,7 @@ export default function HomePage() {
       </section>
 
       {/* Section 2: Transfer UI */}
-      <section id="transfer" className="relative z-4" style={{ minHeight: `${isMobile ? '2200px' : '55vh'}` }}>
+      <section id="transfer" className="relative z-4" style={{ minHeight: `${isMobile ? '2200px' : '40vh'}` }}>
         <TransferUI />
       </section>
 
