@@ -192,11 +192,32 @@ PLATFORM_CONFIGS = {
 # --- Helper Functions ---
 def get_tidal_session(token: str) -> tidalapi.Session:
     """Create a Tidal session with the provided token."""
-    session = tidalapi.Session()
-    session.load_oauth_session(token_type="Bearer", access_token=token)
-    if not session.check_login():
-        raise HTTPException(status_code=401, detail="Invalid or expired Tidal token.")
-    return session
+    try:
+        session = tidalapi.Session()
+        session.load_oauth_session(token_type="Bearer", access_token=token)
+        
+        # Check if the session is valid by making a test request
+        if not session.check_login():
+            raise HTTPException(status_code=401, detail="Invalid or expired Tidal token.")
+        
+        # Additional validation by making a simple API call
+        try:
+            # Try to get user info to validate the token
+            user = session.user
+            if not user or not hasattr(user, 'id'):
+                raise HTTPException(status_code=401, detail="Tidal token validation failed.")
+        except Exception as e:
+            print(f"❌ Tidal token validation failed: {e}")
+            raise HTTPException(status_code=401, detail="Tidal token validation failed. Please log in again.")
+        
+        return session
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
+    except Exception as e:
+        print(f"❌ Failed to create Tidal session: {e}")
+        raise HTTPException(status_code=401, detail="Failed to authenticate with Tidal. Please log in again.")
 
 def update_progress(transfer_id: str, status: str, step: str, progress: int, 
                    completed: int = 0, total: int = 0, current_playlist: str = None,
@@ -290,8 +311,16 @@ async def verify_tidal_login(request: LoginVerifyRequest):
 @app.post("/api/like/songs")
 async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = Header(...)):
     """Like songs on Tidal with proper failure tracking."""
-    token = authorization.split(" ")[1]
-    tidal_session = get_tidal_session(token)
+    try:
+        token = authorization.split(" ")[1]
+        tidal_session = get_tidal_session(token)
+    except HTTPException as e:
+        # Token validation failed
+        print(f"❌ Token validation failed: {e.detail}")
+        raise e
+    except Exception as e:
+        print(f"❌ Failed to get Tidal session: {e}")
+        raise HTTPException(status_code=401, detail="Failed to authenticate with Tidal. Please log in again.")
     liked_count = 0
     failed_tracks = []
     
@@ -350,8 +379,16 @@ async def like_songs_on_tidal(request: LikeSongsRequest, authorization: str = He
 @app.post("/api/add/albums")
 async def add_albums_to_tidal(request: AddAlbumsRequest, authorization: str = Header(...)):
     """Add albums to Tidal favorites with proper failure tracking."""
-    token = authorization.split(" ")[1]
-    tidal_session = get_tidal_session(token)
+    try:
+        token = authorization.split(" ")[1]
+        tidal_session = get_tidal_session(token)
+    except HTTPException as e:
+        # Token validation failed
+        print(f"❌ Token validation failed: {e.detail}")
+        raise e
+    except Exception as e:
+        print(f"❌ Failed to get Tidal session: {e}")
+        raise HTTPException(status_code=401, detail="Failed to authenticate with Tidal. Please log in again.")
     added_count = 0
     failed_albums = []
     
@@ -564,7 +601,18 @@ def run_playlist_transfer_process(token: str, playlists: List[dict], transfer_id
 @app.post("/api/transfer/playlists")
 async def transfer_playlists_to_tidal(request: TransferPlaylistRequest, background_tasks: BackgroundTasks, authorization: str = Header(...)):
     """Start playlist transfer to Tidal in background."""
-    token = authorization.split(" ")[1]
+    try:
+        token = authorization.split(" ")[1]
+        # Validate token before starting background task
+        get_tidal_session(token)
+    except HTTPException as e:
+        # Token validation failed
+        print(f"❌ Token validation failed: {e.detail}")
+        raise e
+    except Exception as e:
+        print(f"❌ Failed to get Tidal session: {e}")
+        raise HTTPException(status_code=401, detail="Failed to authenticate with Tidal. Please log in again.")
+    
     transfer_id = str(uuid.uuid4())
     playlists_as_dicts = [p.dict(exclude_none=True) for p in request.playlists]
     
@@ -690,9 +738,46 @@ async def root():
             "like_songs": "/api/like/songs",
             "add_albums": "/api/add/albums",
             "transfer_playlists": "/api/transfer/playlists",
-            "progress": "/api/transfer/progress/{transfer_id}"
+            "progress": "/api/transfer/progress/{transfer_id}",
+            "validate_token": "/api/validate-tidal-token"
         }
     }
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint for monitoring."""
+    return {
+        "status": "healthy",
+        "timestamp": time.time(),
+        "version": "2.0"
+    }
+
+@app.post("/api/validate-tidal-token")
+async def validate_tidal_token(authorization: str = Header(...)):
+    """Validate Tidal token endpoint for debugging."""
+    try:
+        token = authorization.split(" ")[1]
+        tidal_session = get_tidal_session(token)
+        
+        # Get user info to confirm token is working
+        user = tidal_session.user
+        return {
+            "status": "valid",
+            "user_id": user.id if hasattr(user, 'id') else None,
+            "message": "Token is valid and working"
+        }
+    except HTTPException as e:
+        return {
+            "status": "invalid",
+            "error": e.detail,
+            "status_code": e.status_code
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "message": "Unexpected error during token validation"
+        }
 
 # -- Failure endpoint --
 @app.get("/api/transfer/failures/{transfer_id}", response_model=FailureReport)

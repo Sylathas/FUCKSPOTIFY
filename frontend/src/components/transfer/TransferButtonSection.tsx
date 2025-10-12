@@ -408,19 +408,30 @@ export default function TransferButtonSection({
         // Handle playlists with progress tracking
         if (playlistsToProcess.length > 0) {
             setTransferStatus('Sending playlists to server...')
-            const res = await fetch(`${BACKEND_API_URL}/api/transfer/playlists`, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({ playlists: playlistsToProcess })
-            })
+            try {
+                const res = await fetch(`${BACKEND_API_URL}/api/transfer/playlists`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ playlists: playlistsToProcess })
+                })
 
-            const playlistResult = await res.json()
-            if (playlistResult.transfer_id) {
-                setCurrentTransferId(playlistResult.transfer_id)
-            } else {
-                results.push(`Playlists: ${playlistResult.message}`)
-                completedOperations++
-                setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        throw new Error('401 Unauthorized - Please log in to Tidal again')
+                    }
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+                }
+
+                const playlistResult = await res.json()
+                if (playlistResult.transfer_id) {
+                    setCurrentTransferId(playlistResult.transfer_id)
+                } else {
+                    results.push(`Playlists: ${playlistResult.message}`)
+                    completedOperations++
+                    setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
+                }
+            } catch (error) {
+                throw new Error(`Playlist transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
             }
         }
 
@@ -428,36 +439,60 @@ export default function TransferButtonSection({
         let songsTransferId = null
         if (tracksToProcess.length > 0) {
             setTransferStatus(`Processing ${tracksToProcess.length} liked songs...`)
-            const res = await fetch(`${BACKEND_API_URL}/api/like/songs`, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({ tracks: tracksToProcess })
-            })
-            const songResult = await res.json()
-            results.push(`Liked Songs: ${songResult.message}`)
-            if (songResult.transfer_id) {
-                songsTransferId = songResult.transfer_id
+            try {
+                const res = await fetch(`${BACKEND_API_URL}/api/like/songs`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ tracks: tracksToProcess })
+                })
+
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        throw new Error('401 Unauthorized - Please log in to Tidal again')
+                    }
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+                }
+
+                const songResult = await res.json()
+                results.push(`Liked Songs: ${songResult.message}`)
+                if (songResult.transfer_id) {
+                    songsTransferId = songResult.transfer_id
+                }
+                completedOperations++
+                setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
+            } catch (error) {
+                throw new Error(`Songs transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
             }
-            completedOperations++
-            setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
         }
 
         // Handle albums
         let albumsTransferId = null
         if (albumsToProcess.length > 0) {
             setTransferStatus(`Processing ${albumsToProcess.length} albums...`)
-            const res = await fetch(`${BACKEND_API_URL}/api/add/albums`, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({ albums: albumsToProcess })
-            })
-            const albumResult = await res.json()
-            results.push(`Albums: ${albumResult.message}`)
-            if (albumResult.transfer_id) {
-                albumsTransferId = albumResult.transfer_id
+            try {
+                const res = await fetch(`${BACKEND_API_URL}/api/add/albums`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ albums: albumsToProcess })
+                })
+
+                if (!res.ok) {
+                    if (res.status === 401) {
+                        throw new Error('401 Unauthorized - Please log in to Tidal again')
+                    }
+                    throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+                }
+
+                const albumResult = await res.json()
+                results.push(`Albums: ${albumResult.message}`)
+                if (albumResult.transfer_id) {
+                    albumsTransferId = albumResult.transfer_id
+                }
+                completedOperations++
+                setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
+            } catch (error) {
+                throw new Error(`Albums transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
             }
-            completedOperations++
-            setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
         }
 
         // If no playlists (so no background transfer), check for failures from songs/albums
@@ -606,7 +641,24 @@ export default function TransferButtonSection({
 
         } catch (error) {
             console.error('Transfer failed:', error)
-            alert(`Transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+
+            // Handle specific error types
+            let errorMessage = 'Unknown error'
+            if (error instanceof Error) {
+                if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+                    errorMessage = 'Your Tidal login has expired. Please log in to Tidal again.'
+                    // Clear the expired token
+                    localStorage.removeItem('tidal_access_token')
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Network error. Please check your internet connection and try again.'
+                } else if (error.message.includes('CORS')) {
+                    errorMessage = 'Server connection error. Please try again later.'
+                } else {
+                    errorMessage = error.message
+                }
+            }
+
+            alert(`Transfer failed: ${errorMessage}`)
             setTransferStatus('Transfer failed')
             setIsTransferring(false)
             setCurrentTransferId(null)
