@@ -19,17 +19,40 @@ def clear_tidal_playlist(playlist: tidalapi.UserPlaylist, chunk_size: int=20):
     with tqdm(desc="Erasing existing tracks from Tidal playlist", total=playlist.num_tracks) as progress:
         while playlist.num_tracks:
             indices = range(min(playlist.num_tracks, chunk_size))
-            _remove_indices_from_playlist(playlist, indices)
-            progress.update(len(indices))
+            try:
+                _remove_indices_from_playlist(playlist, indices)
+                progress.update(len(indices))
+            except Exception as e:
+                print(f"❌ Failed to clear playlist: {e}")
+                # Try clearing one by one if batch fails
+                for i in indices:
+                    try:
+                        _remove_indices_from_playlist(playlist, [i])
+                        progress.update(1)
+                    except Exception as single_error:
+                        print(f"❌ Failed to remove track at index {i}: {single_error}")
+                        progress.update(1)
     
 def add_multiple_tracks_to_playlist(playlist: tidalapi.UserPlaylist, track_ids: List[int], chunk_size: int=20):
     offset = 0
     with tqdm(desc="Adding new tracks to Tidal playlist", total=len(track_ids)) as progress:
         while offset < len(track_ids):
             count = min(chunk_size, len(track_ids) - offset)
-            playlist.add(track_ids[offset:offset+chunk_size])
-            offset += count
-            progress.update(count)
+            try:
+                playlist.add(track_ids[offset:offset+chunk_size])
+                offset += count
+                progress.update(count)
+            except Exception as e:
+                print(f"❌ Failed to add tracks to playlist: {e}")
+                # Try adding tracks one by one if batch fails
+                for i in range(offset, min(offset + count, len(track_ids))):
+                    try:
+                        playlist.add([track_ids[i]])
+                        progress.update(1)
+                    except Exception as single_error:
+                        print(f"❌ Failed to add track {track_ids[i]}: {single_error}")
+                        progress.update(1)
+                offset += count
 
 async def _get_all_chunks(url, session, parser, params={}) -> List[tidalapi.Track]:
     """ 
@@ -37,24 +60,36 @@ async def _get_all_chunks(url, session, parser, params={}) -> List[tidalapi.Trac
         The main library doesn't provide the total number of items or expose the raw json, so use this wrapper instead
     """
     def _make_request(offset: int=0):
-        new_params = params
+        new_params = params.copy()
         new_params['offset'] = offset
-        return session.request.map_request(url, params=new_params)
+        try:
+            return session.request.map_request(url, params=new_params)
+        except Exception as e:
+            print(f"❌ Request failed for offset {offset}: {e}")
+            raise
 
-    first_chunk_raw = _make_request()
-    limit = first_chunk_raw['limit']
-    total = first_chunk_raw['totalNumberOfItems']
-    items = session.request.map_json(first_chunk_raw, parse=parser)
+    try:
+        first_chunk_raw = _make_request()
+        limit = first_chunk_raw['limit']
+        total = first_chunk_raw['totalNumberOfItems']
+        items = session.request.map_json(first_chunk_raw, parse=parser)
 
-    if len(items) < total:
-        offsets = [limit * n for n in range(1, math.ceil(total/limit))]
-        extra_results = await atqdm.gather(
-                *[asyncio.to_thread(lambda offset: session.request.map_json(_make_request(offset), parse=parser), offset) for offset in offsets],
-            desc="Fetching additional data chunks"
-        )
-        for extra_result in extra_results:
-            items.extend(extra_result)
-    return items
+        if len(items) < total:
+            offsets = [limit * n for n in range(1, math.ceil(total/limit))]
+            extra_results = await atqdm.gather(
+                    *[asyncio.to_thread(lambda offset: session.request.map_json(_make_request(offset), parse=parser), offset) for offset in offsets],
+                desc="Fetching additional data chunks",
+                return_exceptions=True
+            )
+            for extra_result in extra_results:
+                if isinstance(extra_result, Exception):
+                    print(f"❌ Failed to fetch chunk: {extra_result}")
+                    continue
+                items.extend(extra_result)
+        return items
+    except Exception as e:
+        print(f"❌ Failed to get chunks from {url}: {e}")
+        raise
 
 async def get_all_favorites(favorites: tidalapi.Favorites, order: str = "NAME", order_direction: str = "ASC", chunk_size: int=100) -> List[tidalapi.Track]:
     """ Get all favorites from Tidal playlist in chunks """

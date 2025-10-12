@@ -473,8 +473,22 @@ async def run_playlist_transfer_process_async(token: str, playlists: List[dict],
                     print(f"✅ All tracks found for playlist '{playlist_name}'")
                 
             except Exception as e:
-                print(f"❌ Failed to process playlist '{playlist_name}': {e}")
-                playlist_failures[playlist_name] = [f"Failed to create playlist: {str(e)}"]
+                error_str = str(e)
+                print(f"❌ Failed to process playlist '{playlist_name}': {error_str}")
+                
+                # Provide more specific error messages for common issues
+                if "Load failed" in error_str or "load failed" in error_str.lower():
+                    error_msg = f"Failed to load playlist data for '{playlist_name}'. This may be due to network issues or Tidal API limitations."
+                elif "timeout" in error_str.lower():
+                    error_msg = f"Timeout while processing playlist '{playlist_name}'. Please try again."
+                elif "unauthorized" in error_str.lower() or "401" in error_str:
+                    error_msg = f"Authentication expired while processing playlist '{playlist_name}'. Please log in to Tidal again."
+                elif "rate limit" in error_str.lower() or "429" in error_str:
+                    error_msg = f"Rate limit exceeded while processing playlist '{playlist_name}'. Please wait and try again."
+                else:
+                    error_msg = f"Failed to create playlist '{playlist_name}': {error_str}"
+                
+                playlist_failures[playlist_name] = [error_msg]
             
             print(f"✅ Completed playlist: {playlist_name}")
         
@@ -509,8 +523,21 @@ async def run_playlist_transfer_process_async(token: str, playlists: List[dict],
             print(f"⚠️  Total failed tracks: {total_failed}")
         
     except Exception as e:
-        error_msg = f"Transfer failed: {str(e)}"
+        # Provide more specific error messages
+        error_str = str(e)
+        if "Load failed" in error_str or "load failed" in error_str.lower():
+            error_msg = "Transfer failed: Unable to load playlist data. This may be due to network issues or Tidal API limitations."
+        elif "timeout" in error_str.lower():
+            error_msg = "Transfer failed: Request timeout. Please try again with fewer playlists or check your internet connection."
+        elif "unauthorized" in error_str.lower() or "401" in error_str:
+            error_msg = "Transfer failed: Authentication expired. Please log in to Tidal again."
+        elif "rate limit" in error_str.lower() or "429" in error_str:
+            error_msg = "Transfer failed: Rate limit exceeded. Please wait a few minutes and try again."
+        else:
+            error_msg = f"Transfer failed: {error_str}"
+        
         print(f"❌ BACKGROUND TASK ERROR: {error_msg}")
+        print(f"❌ Original error: {error_str}")
         
         # Mark transfer as failed in cache
         failure_cache.complete_transfer_report(

@@ -349,15 +349,30 @@ async def download_and_upload_cover_art(tidal_session: tidalapi.Session, cover_u
             
         print(f"✓ Downloaded cover art ({file_size} bytes) for playlist '{playlist_name}'")
         
-        # Note: The actual upload method depends on your tidalapi version
-        # This is a placeholder - you may need to use tidalapi_patch or check the API
-        # Some versions support playlist.set_image() or similar methods
+        # Use the proper upload function from tidalapi_patch
+        from tidalapi_patch import upload_playlist_cover_art
+        
+        # Find the playlist to upload to
+        all_playlists = await get_all_playlists(tidal_session.user)
+        target_playlist = next((p for p in all_playlists if p.name == playlist_name), None)
+        
+        if not target_playlist:
+            print(f"❌ Could not find playlist '{playlist_name}' for cover art upload")
+            os.unlink(temp_file_path)
+            return False
+        
+        # Upload the cover art
+        success = upload_playlist_cover_art(target_playlist, temp_file_path)
         
         # Cleanup temp file
         os.unlink(temp_file_path)
         
-        print(f"✓ Successfully set cover art for playlist '{playlist_name}'")
-        return True
+        if success:
+            print(f"✓ Successfully set cover art for playlist '{playlist_name}'")
+        else:
+            print(f"❌ Failed to upload cover art for playlist '{playlist_name}'")
+        
+        return success
         
     except requests.exceptions.RequestException as e:
         print(f"Failed to download cover art for playlist '{playlist_name}': {e}")
