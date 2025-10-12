@@ -88,6 +88,7 @@ export default function PlatformSelectorSection({
 
                     if (verifyData.status === 'completed') {
                         clearInterval(pollInterval);
+                        clearTimeout(timeoutId); // Clear the timeout
                         localStorage.setItem('tidal_access_token', verifyData.access_token);
                         localStorage.removeItem('tidal_login_poll_key');
                         localStorage.removeItem('tidal_login_started');
@@ -96,19 +97,21 @@ export default function PlatformSelectorSection({
                         console.log('Tidal login successful!');
                     } else if (verifyData.status === 'failed') {
                         clearInterval(pollInterval);
+                        clearTimeout(timeoutId); // Clear the timeout
                         setTidalLoginError('Tidal login failed');
                         setIsLoggingIn(false);
                     }
                 } catch (error) {
                     console.error('Polling error:', error);
                     clearInterval(pollInterval);
+                    clearTimeout(timeoutId); // Clear the timeout
                     setTidalLoginError('Login verification failed');
                     setIsLoggingIn(false);
                 }
             }, 3000);
 
             // Stop polling after 5 minutes
-            setTimeout(() => {
+            const timeoutId = setTimeout(() => {
                 clearInterval(pollInterval);
                 if (isLoggingIn) {
                     setTidalLoginError('Login timeout - please try again');

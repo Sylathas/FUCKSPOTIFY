@@ -531,7 +531,7 @@ export default function TransferButtonSection({
         }
     }
 
-        const handleTidalTransfer = async (tracksToProcess: SpotifyTrack[], albumsToProcess: SpotifyAlbum[], playlistsToProcess: SpotifyPlaylist[]) => {
+    const handleTidalTransfer = async (tracksToProcess: SpotifyTrack[], albumsToProcess: SpotifyAlbum[], playlistsToProcess: SpotifyPlaylist[]) => {
         const tidalToken = localStorage.getItem('tidal_access_token')
         if (!tidalToken) {
             alert('Please log in to Tidal first!')
@@ -543,14 +543,19 @@ export default function TransferButtonSection({
             'Authorization': `Bearer ${tidalToken}`
         }
 
+        const results = []
+        let completedOperations = 0
+        const totalOperations = (playlistsToProcess.length > 0 ? 1 : 0) +
+            (tracksToProcess.length > 0 ? 1 : 0) +
+            (albumsToProcess.length > 0 ? 1 : 0)
+
+        // Use unified transfer endpoint for all transfer types
+        setTransferStatus('Sending all data to server...')
         try {
-            setTransferStatus('Sending all data to server...')
-            
-            // Use the new unified transfer endpoint
             const res = await fetch(`${BACKEND_API_URL}/api/transfer/unified`, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     tracks: tracksToProcess,
                     albums: albumsToProcess,
                     playlists: playlistsToProcess
@@ -564,22 +569,168 @@ export default function TransferButtonSection({
                 throw new Error(`HTTP ${res.status}: ${res.statusText}`)
             }
 
-            const result = await res.json()
-            console.log('Unified transfer response:', result)
-            
-            if (result.transfer_id) {
-                setCurrentTransferId(result.transfer_id)
-                setTransferStatus('Transfer started - processing all items...')
-                // The progress polling will handle the rest
-                return true
+            const playlistResult = await res.json()
+            if (playlistResult.transfer_id) {
+                setCurrentTransferId(playlistResult.transfer_id)
             } else {
-                throw new Error('No transfer ID received from server')
+                results.push(`Playlists: ${playlistResult.message}`)
+                completedOperations++
+                setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
             }
-            
         } catch (error) {
-            throw new Error(`Transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+            throw new Error(`Playlist transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
     }
+
+    // Handle liked songs
+    let songsTransferId = null
+    if (tracksToProcess.length > 0) {
+        setTransferStatus(`Processing ${tracksToProcess.length} liked songs...`)
+        try {
+            const res = await fetch(`${BACKEND_API_URL}/api/like/songs`, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ tracks: tracksToProcess })
+            })
+
+            if (!res.ok) {
+                if (res.status === 401) {
+                    throw new Error('401 Unauthorized - Please log in to Tidal again')
+                }
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+            }
+
+            let songResult
+            try {
+                songResult = await res.json()
+                console.log('Songs transfer response:', songResult) // Debug log
+            } catch (jsonError) {
+                console.error('Failed to parse songs response JSON:', jsonError)
+                throw new Error('Invalid response from server')
+            }
+
+            // Handle the response properly
+            const message = songResult?.message || songResult?.status || 'Songs transfer completed'
+            results.push(`Liked Songs: ${message}`)
+
+            if (songResult.transfer_id) {
+                songsTransferId = songResult.transfer_id
+            }
+            completedOperations++
+            setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
+        } catch (error) {
+            throw new Error(`Songs transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
+    }
+
+    // Handle albums
+    let albumsTransferId = null
+    if (albumsToProcess.length > 0) {
+        setTransferStatus(`Processing ${albumsToProcess.length} albums...`)
+        try {
+            const res = await fetch(`${BACKEND_API_URL}/api/add/albums`, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({ albums: albumsToProcess })
+            })
+
+            if (!res.ok) {
+                if (res.status === 401) {
+                    throw new Error('401 Unauthorized - Please log in to Tidal again')
+                }
+                throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+            }
+
+            let albumResult
+            try {
+                albumResult = await res.json()
+                console.log('Album transfer response:', albumResult) // Debug log
+            } catch (jsonError) {
+                console.error('Failed to parse album response JSON:', jsonError)
+                throw new Error('Invalid response from server')
+            }
+
+            // Handle the response properly
+            const message = albumResult?.message || albumResult?.status || 'Album transfer completed'
+            results.push(`Albums: ${message}`)
+
+            if (albumResult.transfer_id) {
+                albumsTransferId = albumResult.transfer_id
+            }
+            completedOperations++
+            setTransferProgress(Math.round((completedOperations / totalOperations) * 100))
+        } catch (error) {
+            throw new Error(`Albums transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
+    }
+
+    // If no playlists (so no background transfer), check for failures from songs/albums
+    if (playlistsToProcess.length === 0) {
+        // Combine all transfer IDs to check for failures
+        const transferIds = [songsTransferId, albumsTransferId].filter(Boolean)
+
+        // Check for failures from any of the operations
+        let hasFailures = false
+        let combinedReport: FailureReport | null = null
+
+        for (const transferId of transferIds) {
+            try {
+                const failureResponse = await fetch(`${BACKEND_API_URL}/api/transfer/failures/${transferId}`)
+                if (failureResponse.ok) {
+                    const report: FailureReport = await failureResponse.json()
+                    console.log('Fetched failure report:', report) // Debug log
+                    if (report.total_failures > 0) {
+                        if (!combinedReport) {
+                            combinedReport = {
+                                platform: report.platform,
+                                failed_songs: Array.isArray(report.failed_songs) ? [...report.failed_songs] : [],
+                                failed_albums: Array.isArray(report.failed_albums) ? [...report.failed_albums] : [],
+                                failed_playlists: report.failed_playlists && typeof report.failed_playlists === 'object' ? { ...report.failed_playlists } : {},
+                                total_failures: report.total_failures
+                            }
+                        } else {
+                            // Merge with existing report
+                            const newFailedSongs = Array.isArray(report.failed_songs) ? report.failed_songs : []
+                            const newFailedAlbums = Array.isArray(report.failed_albums) ? report.failed_albums : []
+                            const newFailedPlaylists = report.failed_playlists && typeof report.failed_playlists === 'object' ? report.failed_playlists : {}
+
+                            combinedReport = {
+                                platform: combinedReport.platform,
+                                failed_songs: [...combinedReport.failed_songs, ...newFailedSongs],
+                                failed_albums: [...combinedReport.failed_albums, ...newFailedAlbums],
+                                failed_playlists: Object.assign({}, combinedReport.failed_playlists, newFailedPlaylists),
+                                total_failures: combinedReport.total_failures + report.total_failures
+                            }
+                        }
+                        hasFailures = true
+                    }
+                }
+            } catch (error) {
+                console.error(`Failed to fetch failure report for ${transferId}:`, error)
+            }
+        }
+
+        console.log('Combined report:', combinedReport) // Debug log
+        console.log('Has failures:', hasFailures) // Debug log
+
+        if (hasFailures && combinedReport) {
+            setFailureReport(combinedReport)
+            setShowDownloadOption(true)
+            console.log('Setting download option to true') // Debug log
+        }
+
+        alert("Transfer completed!\n\n" + results.join("\n"))
+        setTransferStatus('Transfer completed!')
+        setTimeout(() => {
+            setIsTransferring(false)
+            setTransferStatus('')
+            setTransferProgress(0)
+            // Don't clear download option and failure report here - let user decide when to download
+        }, 2000)
+    }
+
+    return true
+}
 
 const handleBandcampTransfer = async (tracksToProcess: SpotifyTrack[], albumsToProcess: SpotifyAlbum[], playlistsToProcess: SpotifyPlaylist[]) => {
     const result = await bandcampIntegration.transferToBandcamp(
