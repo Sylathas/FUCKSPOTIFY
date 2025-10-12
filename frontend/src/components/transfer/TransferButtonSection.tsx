@@ -93,8 +93,6 @@ export default function TransferButtonSection({
     const [transferStatus, setTransferStatus] = useState('')
     const [transferProgress, setTransferProgress] = useState(0)
     const [currentTransferId, setCurrentTransferId] = useState<string | null>(null)
-    const [songsTransferId, setSongsTransferId] = useState<string | null>(null)
-    const [albumsTransferId, setAlbumsTransferId] = useState<string | null>(null)
     const [detailedProgress, setDetailedProgress] = useState<ProgressData | null>(null)
     const [failureReport, setFailureReport] = useState<FailureReport | null>(null)
     const [showDownloadOption, setShowDownloadOption] = useState(false)
@@ -158,8 +156,8 @@ export default function TransferButtonSection({
                             setCurrentTransferId(null)
                             setShowStatusCheckButton(false)
 
-                            // Fetch and combine failure reports from ALL operations (playlists + songs + albums)
-                            await fetchAndCombineAllFailureReports(currentTransferId, songsTransferId, albumsTransferId)
+                            // Fetch failure report from unified transfer
+                            await fetchAndCombineAllFailureReports(currentTransferId)
 
                             setTimeout(() => {
                                 setTransferStatus('')
@@ -236,65 +234,27 @@ export default function TransferButtonSection({
         }
     }, [currentTransferId, isTransferring, selectedPlatform, BACKEND_API_URL])
 
-    const fetchAndCombineAllFailureReports = async (playlistTransferId: string | null, songsTransferId: string | null, albumsTransferId: string | null) => {
+    const fetchAndCombineAllFailureReports = async (transferId: string) => {
         try {
-            console.log('Fetching all failure reports:', { playlistTransferId, songsTransferId, albumsTransferId })
+            console.log('Fetching failure report for unified transfer:', transferId)
 
-            const transferIds = [playlistTransferId, songsTransferId, albumsTransferId].filter(Boolean)
-            let combinedReport: FailureReport | null = null
-            let hasFailures = false
+            const response = await fetch(`${BACKEND_API_URL}/api/transfer/failures/${transferId}`)
+            if (response.ok) {
+                const report: FailureReport = await response.json()
+                console.log('Fetched unified failure report:', report)
 
-            for (const transferId of transferIds) {
-                try {
-                    console.log('Fetching failure report for transfer ID:', transferId)
-                    const response = await fetch(`${BACKEND_API_URL}/api/transfer/failures/${transferId}`)
-                    if (response.ok) {
-                        const report: FailureReport = await response.json()
-                        console.log('Fetched failure report:', report)
-
-                        if (report.total_failures > 0) {
-                            if (!combinedReport) {
-                                combinedReport = {
-                                    platform: report.platform,
-                                    failed_songs: Array.isArray(report.failed_songs) ? [...report.failed_songs] : [],
-                                    failed_albums: Array.isArray(report.failed_albums) ? [...report.failed_albums] : [],
-                                    failed_playlists: report.failed_playlists && typeof report.failed_playlists === 'object' ? { ...report.failed_playlists } : {},
-                                    total_failures: report.total_failures
-                                }
-                            } else {
-                                // Merge with existing report
-                                const newFailedSongs = Array.isArray(report.failed_songs) ? report.failed_songs : []
-                                const newFailedAlbums = Array.isArray(report.failed_albums) ? report.failed_albums : []
-                                const newFailedPlaylists = report.failed_playlists && typeof report.failed_playlists === 'object' ? report.failed_playlists : {}
-
-                                combinedReport = {
-                                    platform: combinedReport.platform,
-                                    failed_songs: [...combinedReport.failed_songs, ...newFailedSongs],
-                                    failed_albums: [...combinedReport.failed_albums, ...newFailedAlbums],
-                                    failed_playlists: Object.assign({}, combinedReport.failed_playlists, newFailedPlaylists),
-                                    total_failures: combinedReport.total_failures + report.total_failures
-                                }
-                            }
-                            hasFailures = true
-                        }
-                    } else {
-                        console.log('Failed to fetch failure report, status:', response.status)
-                    }
-                } catch (error) {
-                    console.error(`Failed to fetch failure report for ${transferId}:`, error)
+                if (report.total_failures > 0) {
+                    setFailureReport(report)
+                    setShowDownloadOption(true)
+                    console.log('Set download option to true for unified transfer with failures')
+                } else {
+                    console.log('No failures in unified transfer')
                 }
-            }
-
-            console.log('Final combined report:', combinedReport)
-            console.log('Has failures:', hasFailures)
-
-            if (hasFailures && combinedReport) {
-                setFailureReport(combinedReport)
-                setShowDownloadOption(true)
-                console.log('Set download option to true for combined transfer')
+            } else {
+                console.log('Failed to fetch failure report, status:', response.status)
             }
         } catch (error) {
-            console.error('Failed to fetch and combine failure reports:', error)
+            console.error('Failed to fetch failure report:', error)
         }
     }
 
@@ -317,7 +277,7 @@ export default function TransferButtonSection({
                     setCurrentTransferId(null)
 
                     // Fetch failure reports
-                    await fetchAndCombineAllFailureReports(currentTransferId, songsTransferId, albumsTransferId)
+                    await fetchAndCombineAllFailureReports(currentTransferId)
 
                     setTimeout(() => {
                         setTransferStatus('')
@@ -531,7 +491,7 @@ export default function TransferButtonSection({
         }
     }
 
-        const handleTidalTransfer = async (tracksToProcess: SpotifyTrack[], albumsToProcess: SpotifyAlbum[], playlistsToProcess: SpotifyPlaylist[]) => {
+    const handleTidalTransfer = async (tracksToProcess: SpotifyTrack[], albumsToProcess: SpotifyAlbum[], playlistsToProcess: SpotifyPlaylist[]) => {
         const tidalToken = localStorage.getItem('tidal_access_token')
         if (!tidalToken) {
             alert('Please log in to Tidal first!')
@@ -545,12 +505,12 @@ export default function TransferButtonSection({
 
         try {
             setTransferStatus('Sending all data to server...')
-            
+
             // Use the new unified transfer endpoint
             const res = await fetch(`${BACKEND_API_URL}/api/transfer/unified`, {
                 method: 'POST',
                 headers: headers,
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     tracks: tracksToProcess,
                     albums: albumsToProcess,
                     playlists: playlistsToProcess
@@ -566,7 +526,7 @@ export default function TransferButtonSection({
 
             const result = await res.json()
             console.log('Unified transfer response:', result)
-            
+
             if (result.transfer_id) {
                 setCurrentTransferId(result.transfer_id)
                 setTransferStatus('Transfer started - processing all items...')
@@ -575,244 +535,242 @@ export default function TransferButtonSection({
             } else {
                 throw new Error('No transfer ID received from server')
             }
-            
+
         } catch (error) {
             throw new Error(`Transfer failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
         }
     }
 
-const handleBandcampTransfer = async (tracksToProcess: SpotifyTrack[], albumsToProcess: SpotifyAlbum[], playlistsToProcess: SpotifyPlaylist[]) => {
-    const result = await bandcampIntegration.transferToBandcamp(
-        tracksToProcess,
-        albumsToProcess,
-        playlistsToProcess,
-        (progress, status) => {
-            setTransferProgress(progress)
-            setTransferStatus(status)
-        }
-    )
-    const downloadChoice = confirm(`Bandcamp Guide Ready!\n\nClick OK to download .txt, or Cancel to print/save as PDF.`)
-    if (downloadChoice) {
-        result.downloadOptions.downloadTxt()
-    } else {
-        result.downloadOptions.downloadPdf()
-    }
-    setIsTransferring(false)
-    return true
-}
-
-const handleFuturePlatformTransfer = async (platform: string, tracksToProcess: SpotifyTrack[], albumsToProcess: SpotifyAlbum[], playlistsToProcess: SpotifyPlaylist[]) => {
-    const platformConfig = PLATFORM_CONFIGS[platform]
-    if (!platformConfig) {
-        throw new Error(`Platform ${platform} not configured`)
-    }
-
-    // For future platforms, implement their specific transfer logic here
-    // This is a placeholder that can be extended when new platforms are added
-
-    setTransferStatus(`${platformConfig.name} transfer not yet implemented`)
-    setTimeout(() => {
-        setIsTransferring(false)
-        setTransferStatus('')
-    }, 2000)
-
-    return false
-}
-
-const handleTransfer = async () => {
-    if (!canTransfer() || !selectedPlatform) return
-
-    setIsTransferring(true)
-    setTransferStatus('Preparing transfer...')
-    setTransferProgress(0)
-    setShowDownloadOption(false)
-    setFailureReport(null)
-    // Clear any previous transfer IDs
-    setCurrentTransferId(null)
-    setSongsTransferId(null)
-    setAlbumsTransferId(null)
-
-    try {
-        const { tracksToProcess, albumsToProcess, playlistsToProcess } = await fetchSelectedData()
-        let success = false
-
-        // Route to appropriate platform handler
-        switch (selectedPlatform) {
-            case 'TIDAL':
-                success = await handleTidalTransfer(tracksToProcess, albumsToProcess, playlistsToProcess)
-                break
-            case 'BANDCAMP':
-                success = await handleBandcampTransfer(tracksToProcess, albumsToProcess, playlistsToProcess)
-                break
-            case 'APPLE_MUSIC':
-            case 'SOUNDCLOUD':
-            case 'YOUTUBE_MUSIC':
-                success = await handleFuturePlatformTransfer(selectedPlatform, tracksToProcess, albumsToProcess, playlistsToProcess)
-                break
-            default:
-                throw new Error(`Unsupported platform: ${selectedPlatform}`)
-        }
-
-        if (!success) {
-            setIsTransferring(false)
-        }
-
-    } catch (error) {
-        console.error('Transfer failed:', error)
-
-        // Handle specific error types
-        let errorMessage = 'Unknown error'
-        if (error instanceof Error) {
-            if (error.message.includes('401') || error.message.includes('Unauthorized')) {
-                errorMessage = 'Your Tidal login has expired. Please log in to Tidal again.'
-                // Clear the expired token
-                localStorage.removeItem('tidal_access_token')
-            } else if (error.message.includes('Failed to fetch')) {
-                errorMessage = 'Network error. Please check your internet connection and try again.'
-            } else if (error.message.includes('CORS')) {
-                errorMessage = 'Server connection error. Please try again later.'
-            } else {
-                errorMessage = error.message
+    const handleBandcampTransfer = async (tracksToProcess: SpotifyTrack[], albumsToProcess: SpotifyAlbum[], playlistsToProcess: SpotifyPlaylist[]) => {
+        const result = await bandcampIntegration.transferToBandcamp(
+            tracksToProcess,
+            albumsToProcess,
+            playlistsToProcess,
+            (progress, status) => {
+                setTransferProgress(progress)
+                setTransferStatus(status)
             }
+        )
+        const downloadChoice = confirm(`Bandcamp Guide Ready!\n\nClick OK to download .txt, or Cancel to print/save as PDF.`)
+        if (downloadChoice) {
+            result.downloadOptions.downloadTxt()
+        } else {
+            result.downloadOptions.downloadPdf()
+        }
+        setIsTransferring(false)
+        return true
+    }
+
+    const handleFuturePlatformTransfer = async (platform: string, tracksToProcess: SpotifyTrack[], albumsToProcess: SpotifyAlbum[], playlistsToProcess: SpotifyPlaylist[]) => {
+        const platformConfig = PLATFORM_CONFIGS[platform]
+        if (!platformConfig) {
+            throw new Error(`Platform ${platform} not configured`)
         }
 
-        alert(`Transfer failed: ${errorMessage}`)
-        setTransferStatus('Transfer failed')
-        setIsTransferring(false)
-        setCurrentTransferId(null)
+        // For future platforms, implement their specific transfer logic here
+        // This is a placeholder that can be extended when new platforms are added
+
+        setTransferStatus(`${platformConfig.name} transfer not yet implemented`)
+        setTimeout(() => {
+            setIsTransferring(false)
+            setTransferStatus('')
+        }, 2000)
+
+        return false
     }
-}
 
-const transferReady = canTransfer()
-const platformConfig = getCurrentPlatformConfig()
+    const handleTransfer = async () => {
+        if (!canTransfer() || !selectedPlatform) return
 
-return (
-    <div
-        className={`
+        setIsTransferring(true)
+        setTransferStatus('Preparing transfer...')
+        setTransferProgress(0)
+        setShowDownloadOption(false)
+        setFailureReport(null)
+        // Clear any previous transfer ID
+        setCurrentTransferId(null)
+
+        try {
+            const { tracksToProcess, albumsToProcess, playlistsToProcess } = await fetchSelectedData()
+            let success = false
+
+            // Route to appropriate platform handler
+            switch (selectedPlatform) {
+                case 'TIDAL':
+                    success = await handleTidalTransfer(tracksToProcess, albumsToProcess, playlistsToProcess)
+                    break
+                case 'BANDCAMP':
+                    success = await handleBandcampTransfer(tracksToProcess, albumsToProcess, playlistsToProcess)
+                    break
+                case 'APPLE_MUSIC':
+                case 'SOUNDCLOUD':
+                case 'YOUTUBE_MUSIC':
+                    success = await handleFuturePlatformTransfer(selectedPlatform, tracksToProcess, albumsToProcess, playlistsToProcess)
+                    break
+                default:
+                    throw new Error(`Unsupported platform: ${selectedPlatform}`)
+            }
+
+            if (!success) {
+                setIsTransferring(false)
+            }
+
+        } catch (error) {
+            console.error('Transfer failed:', error)
+
+            // Handle specific error types
+            let errorMessage = 'Unknown error'
+            if (error instanceof Error) {
+                if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+                    errorMessage = 'Your Tidal login has expired. Please log in to Tidal again.'
+                    // Clear the expired token
+                    localStorage.removeItem('tidal_access_token')
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Network error. Please check your internet connection and try again.'
+                } else if (error.message.includes('CORS')) {
+                    errorMessage = 'Server connection error. Please try again later.'
+                } else {
+                    errorMessage = error.message
+                }
+            }
+
+            alert(`Transfer failed: ${errorMessage}`)
+            setTransferStatus('Transfer failed')
+            setIsTransferring(false)
+            setCurrentTransferId(null)
+        }
+    }
+
+    const transferReady = canTransfer()
+    const platformConfig = getCurrentPlatformConfig()
+
+    return (
+        <div
+            className={`
                 relative bg-cover bg-center bg-no-repeat
                 flex items-center justify-center
                 ${isMobile ? 'h-[300px]' : 'h-[100%]'}
             `}
-        style={{
-            backgroundImage: "url('/Buttons/UI_Background.png')",
-            backgroundSize: '100% 100%'
-        }}
-    >
-        {/* Progress overlay during transfer */}
-        {isTransferring && (
-            <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-10 rounded">
-                {/* Progress bar */}
-                <div className="w-3/4 bg-gray-700 rounded-full h-3 mb-3">
-                    {transferProgress > 0 && (
-                        <div
-                            className="bg-green-400 h-3 rounded-full transition-all duration-300"
-                            style={{ width: `${transferProgress}%` }}
-                        />
-                    )}
-                </div>
-
-                {/* Status text */}
-                <p className="text-green-400 text-sm text-center font-mono px-2 mb-2">
-                    {transferStatus}
-                </p>
-
-                {/* Detailed progress for playlists */}
-                {detailedProgress && detailedProgress.total_playlists > 0 && (
-                    <p className="text-yellow-400 text-xs text-center font-mono px-2">
-                        Playlist {detailedProgress.completed_playlists + 1} of {detailedProgress.total_playlists}
-                    </p>
-                )}
-
-                {/* Enhanced progress for songs/albums */}
-                {detailedProgress && detailedProgress.total_songs && detailedProgress.total_songs > 0 && (
-                    <div className="text-xs text-center font-mono px-2 space-y-1">
-                        <p className="text-blue-400">
-                            {detailedProgress.current_operation === 'liking' ? 'Liking' :
-                                detailedProgress.current_operation === 'adding_albums' ? 'Adding' : 'Processing'}
-                            {detailedProgress.songs_processed || 0} of {detailedProgress.total_songs}
-                        </p>
-                        {detailedProgress.current_song && (
-                            <p className="text-gray-300 truncate max-w-xs mx-auto">
-                                "{detailedProgress.current_song}"
-                            </p>
-                        )}
-                        {(detailedProgress.songs_successful || detailedProgress.songs_failed) && (
-                            <p className="text-green-400">
-                                ✓ {detailedProgress.songs_successful || 0} successful
-                                {detailedProgress.songs_failed && detailedProgress.songs_failed > 0 && (
-                                    <span className="text-red-400"> • ✗ {detailedProgress.songs_failed} failed</span>
-                                )}
-                            </p>
+            style={{
+                backgroundImage: "url('/Buttons/UI_Background.png')",
+                backgroundSize: '100% 100%'
+            }}
+        >
+            {/* Progress overlay during transfer */}
+            {isTransferring && (
+                <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-10 rounded">
+                    {/* Progress bar */}
+                    <div className="w-3/4 bg-gray-700 rounded-full h-3 mb-3">
+                        {transferProgress > 0 && (
+                            <div
+                                className="bg-green-400 h-3 rounded-full transition-all duration-300"
+                                style={{ width: `${transferProgress}%` }}
+                            />
                         )}
                     </div>
-                )}
-            </div>
-        )}
 
-        {/* Download failure report button */}
-        {showDownloadOption && failureReport && (
-            <div className="absolute top-4 right-4 z-20">
-                <button
-                    onClick={downloadFailureReport}
-                    className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded text-sm font-mono transition-colors"
-                    title={`Download report of ${failureReport.total_failures} failed transfers`}
-                >
-                    📥 Download Failures ({failureReport.total_failures})
-                </button>
-            </div>
-        )}
+                    {/* Status text */}
+                    <p className="text-green-400 text-sm text-center font-mono px-2 mb-2">
+                        {transferStatus}
+                    </p>
 
-        {/* Check transfer status button */}
-        {showStatusCheckButton && (
-            <div className="absolute top-4 left-4 z-20">
-                <button
-                    onClick={checkTransferStatus}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm font-mono transition-colors"
-                    title="Check if transfer is still running"
-                >
-                    🔄 Check Status
-                </button>
-            </div>
-        )}
+                    {/* Detailed progress for playlists */}
+                    {detailedProgress && detailedProgress.total_playlists > 0 && (
+                        <p className="text-yellow-400 text-xs text-center font-mono px-2">
+                            Playlist {detailedProgress.completed_playlists + 1} of {detailedProgress.total_playlists}
+                        </p>
+                    )}
 
-        {/* Transfer Button Image */}
-        <img
-            src={transferReady ? "/Buttons/Transfer.png" : "/Buttons/Transfer_Disabled.png"}
-            alt="Transfer"
-            onClick={handleTransfer}
-            className={`
+                    {/* Enhanced progress for songs/albums */}
+                    {detailedProgress && detailedProgress.total_songs && detailedProgress.total_songs > 0 && (
+                        <div className="text-xs text-center font-mono px-2 space-y-1">
+                            <p className="text-blue-400">
+                                {detailedProgress.current_operation === 'liking' ? 'Liking' :
+                                    detailedProgress.current_operation === 'adding_albums' ? 'Adding' : 'Processing'}
+                                {detailedProgress.songs_processed || 0} of {detailedProgress.total_songs}
+                            </p>
+                            {detailedProgress.current_song && (
+                                <p className="text-gray-300 truncate max-w-xs mx-auto">
+                                    "{detailedProgress.current_song}"
+                                </p>
+                            )}
+                            {(detailedProgress.songs_successful || detailedProgress.songs_failed) && (
+                                <p className="text-green-400">
+                                    ✓ {detailedProgress.songs_successful || 0} successful
+                                    {detailedProgress.songs_failed && detailedProgress.songs_failed > 0 && (
+                                        <span className="text-red-400"> • ✗ {detailedProgress.songs_failed} failed</span>
+                                    )}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Download failure report button */}
+            {showDownloadOption && failureReport && (
+                <div className="absolute top-4 right-4 z-20">
+                    <button
+                        onClick={downloadFailureReport}
+                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded text-sm font-mono transition-colors"
+                        title={`Download report of ${failureReport.total_failures} failed transfers`}
+                    >
+                        📥 Download Failures ({failureReport.total_failures})
+                    </button>
+                </div>
+            )}
+
+            {/* Check transfer status button */}
+            {showStatusCheckButton && (
+                <div className="absolute top-4 left-4 z-20">
+                    <button
+                        onClick={checkTransferStatus}
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-2 rounded text-sm font-mono transition-colors"
+                        title="Check if transfer is still running"
+                    >
+                        🔄 Check Status
+                    </button>
+                </div>
+            )}
+
+            {/* Transfer Button Image */}
+            <img
+                src={transferReady ? "/Buttons/Transfer.png" : "/Buttons/Transfer_Disabled.png"}
+                alt="Transfer"
+                onClick={handleTransfer}
+                className={`
                     ${isMobile ? 'w-[80%] h-[200px]' : 'w-[90%] h-auto'}
                     ${transferReady && !isTransferring
-                    ? 'cursor-pointer hover:opacity-80 hover:scale-105 transition-all'
-                    : 'cursor-not-allowed'
-                }
+                        ? 'cursor-pointer hover:opacity-80 hover:scale-105 transition-all'
+                        : 'cursor-not-allowed'
+                    }
                 `}
-            title={
-                transferReady
-                    ? `Transfer ${totalSelected} items to ${platformConfig?.name}`
-                    : !spotifyUser
-                        ? "Log in to Spotify first"
-                        : totalSelected === 0
-                            ? "Select music to transfer"
-                            : "Select a platform to transfer to"
-            }
-        />
-
-        {/* Status text */}
-        {!isTransferring && (
-            <div className="absolute bottom-8 left-0 right-0 text-center">
-                <p className={`text-xs font-mono ${transferReady ? 'text-green-400' : 'text-yellow-400'}`}>
-                    {transferReady
-                        ? `Ready: ${totalSelected} items → ${platformConfig?.name}`
+                title={
+                    transferReady
+                        ? `Transfer ${totalSelected} items to ${platformConfig?.name}`
                         : !spotifyUser
                             ? "Log in to Spotify first"
                             : totalSelected === 0
                                 ? "Select music to transfer"
                                 : "Select a platform to transfer to"
-                    }
-                </p>
-            </div>
-        )}
-    </div>
-)
+                }
+            />
+
+            {/* Status text */}
+            {!isTransferring && (
+                <div className="absolute bottom-8 left-0 right-0 text-center">
+                    <p className={`text-xs font-mono ${transferReady ? 'text-green-400' : 'text-yellow-400'}`}>
+                        {transferReady
+                            ? `Ready: ${totalSelected} items → ${platformConfig?.name}`
+                            : !spotifyUser
+                                ? "Log in to Spotify first"
+                                : totalSelected === 0
+                                    ? "Select music to transfer"
+                                    : "Select a platform to transfer to"
+                        }
+                    </p>
+                </div>
+            )}
+        </div>
+    )
 }

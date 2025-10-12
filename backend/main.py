@@ -1064,10 +1064,19 @@ async def run_unified_transfer_process_async(token: str, tracks: List[dict], alb
         
         current_operation = 0
         
+        # Initialize cache entry for unified transfer
+        failure_cache.create_transfer_report(
+            transfer_id=transfer_id,
+            platform="Tidal",
+            total_songs=len(tracks),
+            total_albums=len(albums),
+            total_playlists=len(playlists)
+        )
+        
         # Initialize progress
         update_progress(
             transfer_id, "running", "Starting unified transfer", 0,
-            current_operation=0, total_songs=len(tracks) + len(albums) + sum(len(p.get('tracks', [])) for p in playlists)
+            current_operation=0, total_songs=len(tracks) + len(albums) + sum(len(p.tracks) if p.tracks else 0 for p in playlists)
         )
         
         # 1. Process Songs (if any)
@@ -1090,32 +1099,41 @@ async def run_unified_transfer_process_async(token: str, tracks: List[dict], alb
                     progress_percent = int((current_operation - 1) / total_operations * 100 + (i / len(tracks)) / total_operations * 100)
                     update_progress(
                         transfer_id, "running", f"Liking song {i+1} of {len(tracks)}", 
-                        progress_percent, current_song=track_data.get('name', 'Unknown'),
+                        progress_percent, current_song=track_data.name,
                         songs_processed=i, total_songs=len(tracks),
                         songs_successful=liked_count, songs_failed=len(failed_tracks),
                         current_operation="liking"
                     )
                     
-                    tidal_track = await tidal_search_single(track_data, tidal_session)
+                    # Convert Pydantic model to dict for the search function
+                    track_dict = track_data.dict()
+                    tidal_track = await tidal_search_single(track_dict, tidal_session)
                     
                     if tidal_track:
                         await asyncio.to_thread(tidal_session.user.favorites.add_track, str(tidal_track.id))
                         liked_count += 1
-                        print(f"✓ Liked ({i+1}/{len(tracks)}): {track_data.get('name', 'Unknown')}")
+                        print(f"✓ Liked ({i+1}/{len(tracks)}): {track_data.name}")
                     else:
-                        artist_names = ', '.join([artist.get('name', 'Unknown') for artist in track_data.get('artists', [])])
-                        failed_msg = f"{track_data.get('name', 'Unknown')} - {artist_names}"
+                        artist_names = ', '.join([artist.name for artist in track_data.artists])
+                        failed_msg = f"{track_data.name} - {artist_names}"
                         failed_tracks.append(failed_msg)
                         failure_reports[transfer_id]["failed_songs"].append(failed_msg)
                         print(f"✗ Not found: {failed_msg}")
                 except Exception as e:
-                    artist_names = ', '.join([artist.get('name', 'Unknown') for artist in track_data.get('artists', [])])
-                    error_msg = f"{track_data.get('name', 'Unknown')} - {artist_names} (Error: {str(e)})"
+                    artist_names = ', '.join([artist.name for artist in track_data.artists])
+                    error_msg = f"{track_data.name} - {artist_names} (Error: {str(e)})"
                     failed_tracks.append(error_msg)
                     failure_reports[transfer_id]["failed_songs"].append(error_msg)
                     print(f"✗ Failed to like: {error_msg}")
             
             print(f"✓ Songs processing completed: {liked_count}/{len(tracks)} successful")
+            
+            # Update cache with failed songs
+            if failed_tracks:
+                failure_cache.update_transfer_failures(
+                    transfer_id=transfer_id,
+                    failed_songs=failed_tracks
+                )
         
         # 2. Process Albums (if any)
         if albums:
@@ -1137,13 +1155,14 @@ async def run_unified_transfer_process_async(token: str, tracks: List[dict], alb
                     progress_percent = int((current_operation - 1) / total_operations * 100 + (i / len(albums)) / total_operations * 100)
                     update_progress(
                         transfer_id, "running", f"Adding album {i+1} of {len(albums)}", 
-                        progress_percent, current_song=album_data.get('name', 'Unknown'),
+                        progress_percent, current_song=album_data.name,
                         songs_processed=i, total_songs=len(albums),
                         songs_successful=added_count, songs_failed=len(failed_albums),
                         current_operation="adding_albums"
                     )
                     
-                    query = f"{album_data.get('name', 'Unknown')} {album_data.get('artists', [{}])[0].get('name', 'Unknown')}"
+                    artist_name = album_data.artists[0].name if album_data.artists else 'Unknown'
+                    query = f"{album_data.name} {artist_name}"
                     search_results = await asyncio.to_thread(
                         tidal_session.search, query, models=[tidalapi.album.Album]
                     )
@@ -1152,21 +1171,28 @@ async def run_unified_transfer_process_async(token: str, tracks: List[dict], alb
                         tidal_album_id = search_results['albums'][0].id
                         await asyncio.to_thread(tidal_session.user.favorites.add_album, str(tidal_album_id))
                         added_count += 1
-                        print(f"✓ Added ({i+1}/{len(albums)}): {album_data.get('name', 'Unknown')}")
+                        print(f"✓ Added ({i+1}/{len(albums)}): {album_data.name}")
                     else:
-                        artist_names = ', '.join([artist.get('name', 'Unknown') for artist in album_data.get('artists', [])])
-                        failed_msg = f"{album_data.get('name', 'Unknown')} - {artist_names}"
+                        artist_names = ', '.join([artist.name for artist in album_data.artists])
+                        failed_msg = f"{album_data.name} - {artist_names}"
                         failed_albums.append(failed_msg)
                         failure_reports[transfer_id]["failed_albums"].append(failed_msg)
                         print(f"✗ Not found: {failed_msg}")
                 except Exception as e:
-                    artist_names = ', '.join([artist.get('name', 'Unknown') for artist in album_data.get('artists', [])])
-                    error_msg = f"{album_data.get('name', 'Unknown')} - {artist_names} (Error: {str(e)})"
+                    artist_names = ', '.join([artist.name for artist in album_data.artists])
+                    error_msg = f"{album_data.name} - {artist_names} (Error: {str(e)})"
                     failed_albums.append(error_msg)
                     failure_reports[transfer_id]["failed_albums"].append(error_msg)
                     print(f"✗ Failed to add: {error_msg}")
             
             print(f"✓ Albums processing completed: {added_count}/{len(albums)} successful")
+            
+            # Update cache with failed albums
+            if failed_albums:
+                failure_cache.update_transfer_failures(
+                    transfer_id=transfer_id,
+                    failed_albums=failed_albums
+                )
         
         # 3. Process Playlists (if any)
         if playlists:
@@ -1183,8 +1209,8 @@ async def run_unified_transfer_process_async(token: str, tracks: List[dict], alb
             successful_playlists = 0
             
             for i, playlist_data in enumerate(playlists):
-                playlist_name = playlist_data.get('name', f'Playlist {i+1}')
-                track_count = len(playlist_data.get('tracks', []))
+                playlist_name = playlist_data.name
+                track_count = len(playlist_data.tracks) if playlist_data.tracks else 0
                 
                 print(f"🔄 Processing playlist {i+1}/{len(playlists)}: {playlist_name}")
                 
@@ -1198,8 +1224,9 @@ async def run_unified_transfer_process_async(token: str, tracks: List[dict], alb
                 )
                 
                 try:
-                    # Use the existing sync_playlist function
-                    await sync_playlist(tidal_session, playlist_data, config_dict)
+                    # Convert Pydantic model to dict for the sync function
+                    playlist_dict = playlist_data.dict()
+                    await sync_playlist(tidal_session, playlist_dict, config_dict)
                     successful_playlists += 1
                     print(f"✓ Playlist '{playlist_name}' processed successfully")
                 except Exception as e:
@@ -1208,6 +1235,13 @@ async def run_unified_transfer_process_async(token: str, tracks: List[dict], alb
                     failure_reports[transfer_id]["failed_playlists"][playlist_name] = playlist_failures[playlist_name]
             
             print(f"✓ Playlists processing completed: {successful_playlists}/{len(playlists)} successful")
+            
+            # Update cache with failed playlists
+            if playlist_failures:
+                failure_cache.update_transfer_failures(
+                    transfer_id=transfer_id,
+                    failed_playlists=playlist_failures
+                )
         
         # Update total failures count
         total_failures = (
@@ -1217,12 +1251,18 @@ async def run_unified_transfer_process_async(token: str, tracks: List[dict], alb
         )
         failure_reports[transfer_id]["total_failures"] = total_failures
         
+        # Mark transfer as completed in cache
+        failure_cache.complete_transfer_report(
+            transfer_id=transfer_id,
+            status="completed"
+        )
+        
         # Final progress update
         update_progress(
             transfer_id, "completed", "Unified transfer completed", 100,
             current_operation="completed",
-            songs_processed=len(tracks) + len(albums) + sum(len(p.get('tracks', [])) for p in playlists),
-            total_songs=len(tracks) + len(albums) + sum(len(p.get('tracks', [])) for p in playlists),
+            songs_processed=len(tracks) + len(albums) + sum(len(p.tracks) if p.tracks else 0 for p in playlists),
+            total_songs=len(tracks) + len(albums) + sum(len(p.tracks) if p.tracks else 0 for p in playlists),
             songs_successful=len(tracks) + len(albums) + len(playlists) - total_failures,
             songs_failed=total_failures
         )
@@ -1231,6 +1271,13 @@ async def run_unified_transfer_process_async(token: str, tracks: List[dict], alb
         
     except Exception as e:
         print(f"❌ Unified transfer process failed: {transfer_id} - {e}")
+        
+        # Mark transfer as failed in cache
+        failure_cache.complete_transfer_report(
+            transfer_id=transfer_id,
+            status="failed"
+        )
+        
         update_progress(transfer_id, "failed", f"Transfer failed: {str(e)}", 0)
 
 if __name__ == "__main__":
