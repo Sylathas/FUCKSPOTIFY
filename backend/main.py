@@ -312,14 +312,15 @@ def update_progress(transfer_id: str, status: str, step: str, progress: int,
                    failed_items: dict = None, current_song: str = None,
                    songs_processed: int = None, total_songs: int = None,
                    songs_successful: int = None, songs_failed: int = None,
-                   current_operation: str = None):
+                   current_operation: str = None, completed_playlists: int = None, 
+                   total_playlists: int = None):
     """Enhanced progress update with detailed tracking."""
     transfer_progress[transfer_id] = {
         "status": status,
         "current_step": step,
         "progress_percent": progress,
-        "completed_playlists": completed,
-        "total_playlists": total,
+        "completed_playlists": completed_playlists if completed_playlists is not None else completed,
+        "total_playlists": total_playlists if total_playlists is not None else total,
         "current_playlist": current_playlist,
         "current_song": current_song,
         "songs_processed": songs_processed,
@@ -661,7 +662,7 @@ async def run_playlist_transfer_process_async(token: str, playlists: List[dict],
             total_playlists=total_playlists
         )
         
-        update_progress(transfer_id, "running", "Starting transfer", 0, 0, total_playlists)
+        update_progress(transfer_id, "running", "Starting transfer", 0, completed_playlists=0, total_playlists=total_playlists)
         
         playlist_failures = {}
         successful_playlists = 0
@@ -747,7 +748,7 @@ async def run_playlist_transfer_process_async(token: str, playlists: List[dict],
         failed_items = {"playlists": playlist_failures} if playlist_failures else None
         update_progress(
             transfer_id, "completed", "All playlists transferred", 100, 
-            total_playlists, total_playlists, failed_items=failed_items
+            completed_playlists=total_playlists, total_playlists=total_playlists, failed_items=failed_items
         )
         
         print(f"🎉 Transfer completed: {transfer_id}")
@@ -778,7 +779,7 @@ async def run_playlist_transfer_process_async(token: str, playlists: List[dict],
             status="failed"
         )
         
-        update_progress(transfer_id, "failed", error_msg, 0, 0, len(playlists))
+        update_progress(transfer_id, "failed", error_msg, 0, completed_playlists=0, total_playlists=len(playlists))
 
 def run_playlist_transfer_process(token: str, playlists: List[dict], transfer_id: str):
     """Sync wrapper that runs the async function in a new event loop."""
@@ -790,7 +791,7 @@ def run_playlist_transfer_process(token: str, playlists: List[dict], transfer_id
         loop.run_until_complete(run_playlist_transfer_process_async(token, playlists, transfer_id))
     except Exception as e:
         print(f"Background task wrapper error: {e}")
-        update_progress(transfer_id, "failed", f"Task error: {str(e)}", 0, 0, len(playlists))
+        update_progress(transfer_id, "failed", f"Task error: {str(e)}", 0, completed_playlists=0, total_playlists=len(playlists))
     finally:
         loop.close()
 
