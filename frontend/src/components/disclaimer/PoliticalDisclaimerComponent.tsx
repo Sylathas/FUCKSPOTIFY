@@ -6,7 +6,7 @@ export default function PoliticalDisclaimer({ isMobile }: DisclaimerProps) {
     const reasons = [
         {
             title: 'Streaming Economics',
-            text: 'The "pay per stream" metric is misleading. Artists are paid from a pool system where ~65% of Spotify\'s revenue (11B+ in 2024) goes to distributors and labels, which keep around 70% and then trickle down to artists.\nWith thousands of new songs added daily (between 20k and 60k), AI-generated content increasingly dilutes this pool, reducing payments even if your streams stay constant. Streaming simply isn\'t viable for most artists. \n\nBuy music and merch; join music co-ops such as Mirlo and Subvert; go to concerts. \nJust changing streaming service won\'t help artists much.',
+            text: 'The "pay per stream" metric is misleading. Artists are paid from a pool system where ~65% of Spotify\'s revenue (11B+ in 2024) goes to distributors and labels, which keep around 70% and then trickle down to artists. Let\'s make an example: it\'s 2024, and let\'s imagine that 100B songs have been streamed on Spotify and you have made a total of 1 Million streams (0.00001% of total streams). Spotify has made 11B, sending around 7.15B to labels and distributors. Now, assuming they\'r not taking even more money than usual, 2.14B goes to the artists. This means that you\'re given 2 \nWith thousands of new songs added daily (between 20k and 60k), AI-generated content increasingly dilutes this pool, reducing payments even if your streams stay constant. Streaming simply isn\'t viable for most artists. \n\nBuy music and merch; join music co-ops such as Mirlo and Subvert; go to concerts. \nJust changing streaming service won\'t help artists much.',
             link: ['https://musically.com/2020/05/05/spotify-should-pay-musicians-more-lets-talk-about-how/', 'https://consumerrights.wiki/index.php/Spotify', 'https://mirlo.space/', 'https://subvert.fm/'],
             link_names: ['Spotify paying system', 'Spotify\'s consumer rights violations', 'Mirlo', 'Subvert']
         },
@@ -93,7 +93,7 @@ export default function PoliticalDisclaimer({ isMobile }: DisclaimerProps) {
                     transform: 'translateX(-50%)'
                 }}>
                     <p className="text-gray text-sm">
-                        Your data stays on your device.
+                        Nothing is stored. Your data stays on your device.
                     </p>
                 </div>
             </div>

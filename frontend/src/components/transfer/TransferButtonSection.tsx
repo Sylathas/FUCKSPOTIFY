@@ -1,5 +1,6 @@
 import { bandcampIntegration } from '@/lib/bandcamp'
 import { useState, useEffect } from 'react'
+import { clearTidalData } from '@/lib/dataCleanup'
 import { spotifyAuth } from '@/lib/spotify'
 import { SpotifyTrack, SpotifyAlbum, SpotifyPlaylist } from '@/types'
 
@@ -151,7 +152,8 @@ export default function TransferButtonSection({
                         }
 
                         if (progress.status === 'completed') {
-                            setTransferStatus('Transfer completed successfully!')
+                            setTransferStatus('🎉 Transfer completed successfully!')
+                            setTransferProgress(100)
                             setIsTransferring(false)
                             setCurrentTransferId(null)
                             setShowStatusCheckButton(false)
@@ -159,11 +161,17 @@ export default function TransferButtonSection({
                             // Fetch failure report from unified transfer
                             await fetchAndCombineAllFailureReports(currentTransferId)
 
+                            // Show success message for longer and add visual feedback
+                            setTimeout(() => {
+                                setTransferStatus('✅ All done! Your music has been transferred.')
+                            }, 2000)
+
+                            // Clear everything after a longer delay
                             setTimeout(() => {
                                 setTransferStatus('')
                                 setTransferProgress(0)
                                 setDetailedProgress(null)
-                            }, 3000)
+                            }, 8000)
                         } else if (progress.status === 'failed') {
                             setTransferStatus(`Transfer failed: ${progress.current_step}`)
                             setIsTransferring(false)
@@ -272,18 +280,25 @@ export default function TransferButtonSection({
                 setShowStatusCheckButton(false)
 
                 if (progress.status === 'completed') {
-                    setTransferStatus('Transfer completed successfully!')
+                    setTransferStatus('🎉 Transfer completed successfully!')
+                    setTransferProgress(100)
                     setIsTransferring(false)
                     setCurrentTransferId(null)
 
                     // Fetch failure reports
                     await fetchAndCombineAllFailureReports(currentTransferId)
 
+                    // Show success message for longer and add visual feedback
+                    setTimeout(() => {
+                        setTransferStatus('✅ All done! Your music has been transferred.')
+                    }, 2000)
+
+                    // Clear everything after a longer delay
                     setTimeout(() => {
                         setTransferStatus('')
                         setTransferProgress(0)
                         setDetailedProgress(null)
-                    }, 3000)
+                    }, 8000)
                 } else if (progress.status === 'failed') {
                     setTransferStatus(`Transfer failed: ${progress.current_step}`)
                     setIsTransferring(false)
@@ -624,7 +639,7 @@ export default function TransferButtonSection({
                 if (error.message.includes('401') || error.message.includes('Unauthorized')) {
                     errorMessage = 'Your Tidal login has expired. Please log in to Tidal again.'
                     // Clear the expired token
-                    localStorage.removeItem('tidal_access_token')
+                    clearTidalData() // Comprehensive cleanup
                 } else if (error.message.includes('Failed to fetch')) {
                     errorMessage = 'Network error. Please check your internet connection and try again.'
                 } else if (error.message.includes('CORS')) {
@@ -663,14 +678,20 @@ export default function TransferButtonSection({
                     <div className="w-3/4 bg-gray-700 rounded-full h-3 mb-3">
                         {transferProgress > 0 && (
                             <div
-                                className="bg-green-400 h-3 rounded-full transition-all duration-300"
+                                className={`h-3 rounded-full transition-all duration-300 ${transferStatus.includes('🎉') || transferStatus.includes('✅')
+                                    ? 'bg-green-300 animate-pulse'
+                                    : 'bg-green-400'
+                                    }`}
                                 style={{ width: `${transferProgress}%` }}
                             />
                         )}
                     </div>
 
                     {/* Status text */}
-                    <p className="text-green-400 text-sm text-center font-mono px-2 mb-2">
+                    <p className={`text-sm text-center font-mono px-2 mb-2 ${transferStatus.includes('🎉') || transferStatus.includes('✅')
+                        ? 'text-green-300 text-lg font-bold animate-pulse'
+                        : 'text-green-400'
+                        }`}>
                         {transferStatus}
                     </p>
 
@@ -755,6 +776,17 @@ export default function TransferButtonSection({
                                 : "Select a platform to transfer to"
                 }
             />
+
+            {/* Success notification */}
+            {(transferStatus.includes('🎉') || transferStatus.includes('✅')) && !isTransferring && (
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-30 bg-green-600 border-2 border-green-400 rounded-lg p-4 shadow-lg">
+                    <div className="text-center">
+                        <div className="text-4xl mb-2">🎉</div>
+                        <p className="text-white font-bold text-lg mb-1">Transfer Complete!</p>
+                        <p className="text-green-100 text-sm">Your music has been successfully transferred</p>
+                    </div>
+                </div>
+            )}
 
             {/* Status text */}
             {!isTransferring && (

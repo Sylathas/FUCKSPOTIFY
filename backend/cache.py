@@ -13,7 +13,8 @@ class MatchFailureDatabase:
     """
 
     def __init__(self, filename='.cache.db'):
-        self.engine = sqlalchemy.create_engine(f"sqlite:///{filename}")
+        # Use in-memory SQLite database to avoid persistent storage
+        self.engine = sqlalchemy.create_engine("sqlite:///:memory:")
         meta = MetaData()
         
         # Original match failures table

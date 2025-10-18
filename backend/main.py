@@ -13,10 +13,50 @@ from tidalapi import Config
 from sync import sync_playlist, tidal_search_single
 from cache import failure_cache, track_match_cache, get_cache_summary, cleanup_caches
 
-# --- In-memory stores ---
+# --- In-memory stores (all data cleared on server restart) ---
 pending_logins: Dict[str, Tuple[tidalapi.Session, Any]] = {}
 transfer_progress: Dict[str, Dict[str, Any]] = {}
 failure_reports: Dict[str, Dict[str, Any]] = {}
+
+# --- Data Cleanup Functions ---
+def cleanup_old_pending_logins():
+    """Remove old pending logins to prevent memory leaks."""
+    current_time = time.time()
+    expired_keys = []
+    for poll_key, login_data in pending_logins.items():
+        if isinstance(login_data, tuple) and len(login_data) == 2:
+            session, _ = login_data
+            if hasattr(session, '_created_at') and current_time - session._created_at > 3600:  # 1 hour
+                expired_keys.append(poll_key)
+        elif hasattr(login_data, '_created_at') and current_time - login_data._created_at > 3600:
+            expired_keys.append(poll_key)
+    
+    for key in expired_keys:
+        del pending_logins[key]
+        print(f"🧹 Cleaned up expired login: {key}")
+
+def cleanup_old_transfer_data():
+    """Remove old transfer progress and failure reports."""
+    current_time = time.time()
+    
+    # Clean up transfer progress
+    expired_progress = []
+    for transfer_id, progress in transfer_progress.items():
+        if current_time - progress.get('last_updated', 0) > 3600:  # 1 hour
+            expired_progress.append(transfer_id)
+    
+    for transfer_id in expired_progress:
+        del transfer_progress[transfer_id]
+        if transfer_id in failure_reports:
+            del failure_reports[transfer_id]
+        print(f"🧹 Cleaned up expired transfer: {transfer_id}")
+
+def cleanup_all_user_data():
+    """Clean up all user-related data from memory."""
+    pending_logins.clear()
+    transfer_progress.clear()
+    failure_reports.clear()
+    print("🧹 Cleaned up all user data from memory")
 
 # --- Performance Configuration (No external files needed) ---
 def get_performance_config():
@@ -57,6 +97,11 @@ def get_tidal_config():
     config_obj.search_batch_size = config_dict['search_batch_size']
     config_obj.search_delay = config_dict['search_delay']
     config_obj.playlist_chunk_size = config_dict['playlist_chunk_size']
+    
+    # Set Tidal API credentials (required for OAuth)
+    # Using the same client ID that's hardcoded in tidalapi_patch.py
+    config_obj.client_id = os.getenv('TIDAL_CLIENT_ID', 'wc8j_yBJd20zOow')
+    config_obj.client_secret = os.getenv('TIDAL_CLIENT_SECRET', '')
     
     return config_obj, config_dict
 
@@ -319,20 +364,38 @@ def update_progress(transfer_id: str, status: str, step: str, progress: int,
 @app.get("/api/tidal/initiate-login", response_model=LoginInitResponse)
 def initiate_tidal_login():
     """Initiate Tidal OAuth login process."""
-    config_obj, _ = get_tidal_config()
-    
-    session = tidalapi.Session(config=config_obj)
-    session._created_at = time.time()  # Track creation time for cleanup
-    login, future = session.login_oauth()
-    poll_key = str(uuid.uuid4())
-    pending_logins[poll_key] = (session, future)
-    
-    login_url = login.verification_uri_complete
-    if not login_url.startswith('https://'):
-        login_url = 'https://' + login_url
-    
-    print(f"Initiated Tidal login with poll_key: {poll_key}")
-    return {"login_url": login_url, "poll_key": poll_key}
+    try:
+        # Create session without config first, then set client_id
+        session = tidalapi.Session()
+        session._created_at = time.time()  # Track creation time for cleanup
+        
+        # Set the client_id directly on the session
+        session.client_id = 'wc8j_yBJd20zOow'  # Use the same client ID from tidalapi_patch.py
+        print(f"Set client_id on session: {session.client_id}")
+        
+        # Apply performance config after setting client_id
+        config_obj, _ = get_tidal_config()
+        session.max_concurrency = config_obj.max_concurrency
+        session.rate_limit = config_obj.rate_limit
+        
+        # Debug: Print session configuration
+        print(f"Session config - client_id: {getattr(session, 'client_id', 'NOT SET')}")
+        print(f"Session config - max_concurrency: {getattr(session, 'max_concurrency', 'NOT SET')}")
+        print(f"Session config - rate_limit: {getattr(session, 'rate_limit', 'NOT SET')}")
+        
+        login, future = session.login_oauth()
+        poll_key = str(uuid.uuid4())
+        pending_logins[poll_key] = (session, future)
+        
+        login_url = login.verification_uri_complete
+        if not login_url.startswith('https://'):
+            login_url = 'https://' + login_url
+        
+        print(f"Initiated Tidal login with poll_key: {poll_key}")
+        return {"login_url": login_url, "poll_key": poll_key}
+    except Exception as e:
+        print(f"❌ Failed to initiate Tidal login: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to initiate Tidal login: {str(e)}")
 
 @app.post("/api/tidal/verify-login", response_model=LoginVerifyResponse)
 async def verify_tidal_login(request: LoginVerifyRequest):
@@ -867,7 +930,7 @@ async def trigger_cleanup():
     """Trigger cleanup of old data to prevent memory leaks."""
     try:
         # Clean up old pending logins
-        expired_logins = await cleanup_old_pending_logins()
+        cleanup_old_pending_logins()
         
         # Clean up old transfer progress (older than 2 hours)
         current_time = time.time()
@@ -886,12 +949,31 @@ async def trigger_cleanup():
         
         return {
             "status": "success",
-            "expired_logins": expired_logins,
             "expired_transfers": len(expired_transfers),
             "cache_cleaned": cache_cleaned,
-            "message": f"Cleaned up {expired_logins} expired logins, {len(expired_transfers)} expired transfers"
+            "message": f"Cleaned up expired transfers and cache data. All user data is stored only in memory."
         }
     except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+@app.post("/api/cleanup/all")
+async def cleanup_all_data():
+    """Clean up ALL user data immediately."""
+    try:
+        cleanup_all_user_data()
+        cache_result = cleanup_caches(0)  # Clean all cache data
+        
+        return {
+            "status": "success",
+            "message": "All user data has been completely removed from server memory",
+            "cache_cleaned": cache_result,
+            "note": "No user data is stored persistently on the server"
+        }
+    except Exception as e:
+        print(f"❌ Full cleanup failed: {e}")
         return {
             "status": "error",
             "error": str(e)

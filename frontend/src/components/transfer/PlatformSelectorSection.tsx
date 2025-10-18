@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { clearTidalData } from '@/lib/dataCleanup'
 
 interface PlatformSelectorSectionProps {
     isMobile: boolean
@@ -127,9 +128,7 @@ export default function PlatformSelectorSection({
     };
 
     const handleTidalLogout = async () => {
-        localStorage.removeItem('tidal_access_token');
-        localStorage.removeItem('tidal_login_poll_key');
-        localStorage.removeItem('tidal_login_started');
+        clearTidalData(); // Comprehensive cleanup
         setIsTidalLoggedIn(false);
         setTidalLoginError(null);
 

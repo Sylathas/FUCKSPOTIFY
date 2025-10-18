@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { spotifyAuth } from '@/lib/spotify'
+import { clearSpotifyData } from '@/lib/dataCleanup'
 
 interface SpotifyLoginProps {
     isMobile: boolean
@@ -231,8 +232,7 @@ export default function SpotifyLoginSection({ isMobile, onLogin, spotifyUser }: 
 
     const logout = () => {
         spotifyAuth.logout()
-        localStorage.removeItem('spotify_user')
-        localStorage.removeItem('spotify_login_started')
+        clearSpotifyData() // Comprehensive cleanup
         onLogin(null)
         setError(null)
     }
